@@ -113,10 +113,7 @@ async fn init_app_st() -> AppSt {
   let app_state = AppSt(Arc::new(Mutex::new(default_state)));
   create_scripts(&conf_dir).await;
   let mut s = app_state.0.lock().await;
-  s.pub_ip = match get_pub_ip().await {
-    Ok(pub_ip) => Some(pub_ip),
-    Err(_) => None,
-  };
+  s.pub_ip = (get_pub_ip().await).ok();
   if let Ok(current) = current {
     s.conn_st = get_con_st(&current).await;
     s.current = Some(current);
@@ -182,10 +179,13 @@ async fn exec_wg(app_state: &AppSt, profile: &str) -> Result<(), AppError> {
 async fn get_pub_ip() -> Result<String, AppError> {
   let payload = reqwest::get("https://httpbin.org/ip")
     .await
-    .unwrap()
+    .map_err(|err| AppError {
+      message: err.to_string(),
+    })?
     .json::<IpPayload>()
-    .await
-    .unwrap();
+    .await.map_err(|err| AppError {
+      message: err.to_string(),
+    })?;
   Ok(payload.origin)
 }
 
@@ -251,10 +251,7 @@ async fn delete_profile(
       //   .get_item("conn_info")
       //   .set_enabled(false)
       //   .unwrap();
-      s.pub_ip = match get_pub_ip().await {
-        Ok(pub_ip) => Some(pub_ip),
-        Err(_) => None,
-      };
+      s.pub_ip = (get_pub_ip().await).ok();
     };
   };
   let path = format!("{}/profiles/{profile_name}.conf", s.conf_dir);
@@ -283,10 +280,7 @@ async fn connect_profile(
   let mut s = app_state.0.lock().await;
   s.current = Some(profile);
   s.conn_st = ConnSt::Connected;
-  s.pub_ip = match get_pub_ip().await {
-    Ok(pub_ip) => Some(pub_ip),
-    Err(_) => None,
-  };
+  s.pub_ip = (get_pub_ip().await).ok();
   let tray = app.tray_by_id("main").unwrap();
   tray.set_icon(Some(Image::from_bytes(TRAY_CONNECTED_ICON).unwrap()))
     .unwrap();
@@ -326,10 +320,7 @@ async fn disconnect(
   let tray = app.tray_by_id("main").unwrap();
   tray.set_icon(Some(Image::from_bytes(TRAY_DISCONNECTED_ICON).unwrap()))
     .unwrap();
-  s.pub_ip = match get_pub_ip().await {
-    Ok(pub_ip) => Some(pub_ip),
-    Err(_) => None,
-  };
+  s.pub_ip = (get_pub_ip().await).ok();
   Ok(())
 }
 
@@ -360,10 +351,7 @@ async fn update_profile(
   exec_wg(&app_state, &profile_name).await?;
   tokio::time::sleep(std::time::Duration::from_secs(5)).await;
   let mut s = app_state.0.lock().await;
-  s.pub_ip = match get_pub_ip().await {
-    Ok(pub_ip) => Some(pub_ip),
-    Err(_) => None,
-  };
+  s.pub_ip = (get_pub_ip().await).ok();
   Ok(())
 }
 
@@ -392,49 +380,31 @@ async fn list_profile(
 
 fn build_tray(conn_st: &ConnSt, app: &App) -> Result<TrayIcon, Box<dyn std::error::Error>> {
   let title = MenuItem::with_id(app, "title", APP_TITLE, false, None::<&str>)?;
+  let open_i = MenuItem::with_id(app, "open", "Open", true, None::<&str>)?;
   let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-  let menu = Menu::with_items(app, &[&title, &quit_i])?;
+  let menu = Menu::with_items(app, &[&title, &open_i, &quit_i])?;
   let image = if *conn_st == ConnSt::Connected {
     Image::from_bytes(TRAY_CONNECTED_ICON)?
   } else {
     Image::from_bytes(TRAY_DISCONNECTED_ICON)?
   };
-  let tray = TrayIconBuilder::with_id("main")
-      .on_tray_icon_event(move |tray, event| {
-      if let TrayIconEvent::Click  { id, .. } = event {
-        let app = tray.app_handle();
-        match id.as_ref() {
+  let tray = TrayIconBuilder::new()
+      .on_menu_event(move |app, event| {
+      println!("Tray icon event: {event:#?}");
+        match event.id.as_ref() {
           "quit" => {
             app.exit(0);
           }
           "open" => {
-            let window = match app.get_webview_window("main") {
-              Some(window) => window,
-              None => {
-                #[allow(unused_mut, unused_assignments)]
-                let mut url = "index.html".to_owned();
-                #[cfg(feature = "dev")]
-                {
-                  url = app.config().build.dev_url.clone().unwrap().to_string();
-                }
-                tauri::webview::WebviewWindowBuilder::new(
-                  app,
-                  "main",
-                  tauri::WebviewUrl::App(url.into()),
-                )
-                .title(APP_TITLE)
-                .visible(false)
-                .resizable(false)
-                .build()
-                .unwrap()
-              }
-            };
-            window.show().unwrap();
-            window.set_focus().unwrap();
+            if let Some(window) = app.get_webview_window("main") {
+              // let _ = window.set_always_on_top(true);
+              let _ = window.center();
+              let _ = window.set_focus();
+              let _ = window.show();
+            }
           }
           _ => {}
         }
-      }
     })
   .icon(image)
   .menu(&menu)
@@ -453,6 +423,13 @@ async fn main() {
   let conn_st = app_state.0.lock().await.conn_st.clone();
   // let system_tray = create_tray_menu(&app_state).await;
   tauri::Builder::default()
+  .on_window_event(|window, event| {
+    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+      let _ = window.set_always_on_top(false);
+      let _ = window.hide();
+      api.prevent_close();
+    }
+  })
   .setup(move |app| {
     build_tray(&conn_st, app)?;
     Ok(())
@@ -467,13 +444,8 @@ async fn main() {
       delete_profile,
       update_profile,
     ])
-    .plugin(tauri_plugin_window_state::Builder::default().build())
+    // .plugin(tauri_plugin_window_state::Builder::default().build())
     .build(tauri::generate_context!())
     .expect("error while running tauri application")
-    // .expect("error while building tauri application")
-    .run(|_app_handle, event| {
-      if let tauri::RunEvent::ExitRequested { api, .. } = event {
-        api.prevent_exit();
-      }
-    });
+    .run(|_, _| {});
 }
