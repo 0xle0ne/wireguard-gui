@@ -67,21 +67,21 @@ function ProfileActions({
   return (
     <div className="flex flex-row">
       <button
-        className="flex w-full justify-between"
+        className="flex w-full justify-between cursor-pointer"
         title="Delete"
         onClick={onDelete}
       >
         <DeleteIcon className="ml-2 size-4 text-red-500" />
       </button>
       <button
-        className="flex w-full justify-between"
+        className="flex w-full justify-between cursor-pointer"
         title="Edit"
         onClick={onEdit}
       >
         <Edit className="ml-2 size-4 text-blue-500" />
       </button>
       <button
-        className="flex w-full justify-between"
+        className="flex w-full justify-between cursor-pointer"
         title="Connect"
         onClick={onConnect(profile.name)}
       >
@@ -119,8 +119,9 @@ export function ProfileTable({ current, onConnect }: ProfileTableProps) {
     // sort by name
     let sortedData = data;
     if (debounceFilter) {
-      sortedData = (data || []).filter((p) => p.name.toLowerCase()
-        .includes(debounceFilter.toLowerCase()));
+      sortedData = (data || []).filter((p) =>
+        p.name.toLowerCase().includes(debounceFilter.toLowerCase()),
+      );
     } else {
       sortedData = (data || []).sort((a: any, b: any) =>
         a.name.localeCompare(b.name),

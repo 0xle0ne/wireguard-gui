@@ -6,7 +6,7 @@ use tokio::{fs, sync::Mutex, process::Command};
 use serde::{Serialize, Deserialize};
 
 use tauri::{
-  image::Image, menu::{Menu, MenuItem}, tray::{TrayIcon, TrayIconBuilder, TrayIconEvent}, App, AppHandle, Manager, State
+  image::Image, menu::{Menu, MenuItem}, tray::{TrayIcon, TrayIconBuilder}, App, AppHandle, Manager, State
 };
 
 const WG_SCRIPT: &str = include_str!("../scripts/wg.sh");
@@ -388,16 +388,14 @@ fn build_tray(conn_st: &ConnSt, app: &App) -> Result<TrayIcon, Box<dyn std::erro
   } else {
     Image::from_bytes(TRAY_DISCONNECTED_ICON)?
   };
-  let tray = TrayIconBuilder::new()
+  let tray = TrayIconBuilder::with_id("main")
       .on_menu_event(move |app, event| {
-      println!("Tray icon event: {event:#?}");
         match event.id.as_ref() {
           "quit" => {
             app.exit(0);
           }
           "open" => {
             if let Some(window) = app.get_webview_window("main") {
-              // let _ = window.set_always_on_top(true);
               let _ = window.center();
               let _ = window.set_focus();
               let _ = window.show();
@@ -412,8 +410,6 @@ fn build_tray(conn_st: &ConnSt, app: &App) -> Result<TrayIcon, Box<dyn std::erro
   .icon_as_template(true)
   .show_menu_on_left_click(true)
   .build(app)?;
-  let id = tray.id();
-  println!("Inited tray with id: {id:#?}");
   Ok(tray)
 }
 
