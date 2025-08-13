@@ -29,19 +29,19 @@ jobs:
           echo $GITHUB_REF
           echo $CHANNEL
           echo $VERSION
-          # sudo apt update && sudo apt upgrade -y
-          # sudo apt install qemu-kvm libvirt-daemon-system libvirt-clients bridge-utils virt-manager qemu-system-arm -y
-          # sudo apt install -y qemu-user-static binfmt-support
-          # sudo apt install make -y
-          # sudo apt install ninja-build -y
-          # sudo apt install libpixman-1-dev -y
-          # wget https://download.qemu.org/qemu-7.0.0.tar.xz
-          # tar xvJf qemu-7.0.0.tar.xz
-          # cd qemu-7.0.0
-          # ./configure
-          # make
-          # docker run --privileged --rm tonistiigi/binfmt --install all
-          # docker run --rm --privileged multiarch/qemu-user-static --reset -p yes -c yes
+          sudo apt update && sudo apt upgrade -y
+          sudo apt install qemu-kvm libvirt-daemon-system libvirt-clients bridge-utils virt-manager qemu-system-arm -y
+          sudo apt install -y qemu-user-static binfmt-support
+          sudo apt install make -y
+          sudo apt install ninja-build -y
+          sudo apt install libpixman-1-dev -y
+          wget https://download.qemu.org/qemu-7.0.0.tar.xz
+          tar xvJf qemu-7.0.0.tar.xz
+          cd qemu-7.0.0
+          ./configure
+          make
+          docker run --privileged --rm tonistiigi/binfmt --install all
+          docker run --rm --privileged multiarch/qemu-user-static --reset -p yes -c yes
 
       # Cache Rust
       - uses: actions/cache@v3
