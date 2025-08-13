@@ -35,6 +35,7 @@ jobs:
           sudo apt install make -y
           sudo apt install ninja-build -y
           sudo apt install libpixman-1-dev -y
+          sudo apt-get install libglib2.0-dev -y
           wget https://download.qemu.org/qemu-7.0.0.tar.xz
           tar xvJf qemu-7.0.0.tar.xz
           cd qemu-7.0.0
