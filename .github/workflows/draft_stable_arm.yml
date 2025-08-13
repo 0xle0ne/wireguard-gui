@@ -70,7 +70,7 @@ jobs:
       - name: Build app
         uses: pguyot/arm-runner-action@v2.6.5
         with:
-          base_image: https://dietpi.com/downloads/images/DietPi_RPi-ARMv7-Bookworm.img.xz
+          base_image: dietpi:rpi_armv7_bookworm
           cpu: cortex-a53
           bind_mount_repository: true
           image_additional_mb: 10240
