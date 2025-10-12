@@ -56,8 +56,14 @@ sudo apt-get install javascriptcoregtk-4.1 libsoup-3.0 webkit2gtk-4.1 libayatana
 
 ## 📦 Installation
 
+#### Install from [Releases](https://github.com/leon3s/wireguard-gui/releases/latest):
 Release are currently available as .deb package for Debian/Ubuntu or Appimage for others distro.
-It can be found on the [release page](https://github.com/leon3s/wireguard-gui/releases/latest)
+
+#### Install from [AUR](https://aur.archlinux.org/packages/wireguard-gui-bin):
+
+```sh
+yay -S wireguard-gui-bin
+```
 
 ## 🚀 Demo
 
