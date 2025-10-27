@@ -54,10 +54,19 @@ jobs:
           path: ./src-next/.next
           key: ${{ hashFiles('./src-next/package-lock.json') }}
 
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Install Tauri dependencies
         run: |
           sudo apt-get update
           sudo apt-get install javascriptcoregtk-4.1 libsoup-3.0 webkit2gtk-4.1 libayatana-appindicator3-dev librsvg2-dev -y
+
+      - name: Enable static CRT
+        run: |
+          echo "RUSTFLAGS=-C target-feature=+crt-static" >> $GITHUB_ENV
+          echo "PKG_CONFIG_ALLOW_CROSS=1" >> $GITHUB_ENV
+          echo "PKG_CONFIG_SYSROOT_DIR=/" >> $GITHUB_ENV
 
       - name: Install node dependencies
         run: npm install
