@@ -80,7 +80,6 @@ jobs:
             cairo-dev \
             gdk-pixbuf-dev \
             harfbuzz-dev \
-            atk-dev \
             libsoup3-dev \
             zlib-dev \
             fribidi-dev \
