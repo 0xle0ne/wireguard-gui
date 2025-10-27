@@ -45,6 +45,9 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
+      - name: Install Rust with Clippy
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Install Tauri dependencies
         run: |
           sudo apt-get update
