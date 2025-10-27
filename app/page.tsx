@@ -9,14 +9,25 @@ import { connect, disconnect, useAppLoader, useAppState } from '@/lib/effects';
 import { Button } from '@/components/ui/button';
 import { AppLoader } from '@/components/app-loader';
 import { ProfileTable } from '@/components/profile-table';
+import { AppSplashScreen } from '@/components/app-splash-screen';
 
 export default function Index() {
+  const [showSplash, setShowSplash] = useState(true);
   const [state, , , , fetchState] = useAppState();
   const [appLoader, setAppLoader] = useAppLoader();
   const [appVersion, setAppVersion] = useState<string | null>(null);
 
   useEffect(() => {
-    getVersion().then((v) => setAppVersion(v));
+    getVersion()
+      .then((v) => {
+        setAppVersion(v);
+      })
+      .catch(() => {
+        setAppVersion('unknown');
+      })
+      .finally(() => {
+        setTimeout(() => setShowSplash(false), 1000);
+      });
   }, []);
 
   const onConnectionFinish = useCallback(() => {
@@ -56,6 +67,7 @@ export default function Index() {
 
   return (
     <div className="bg-background h-screen">
+      {showSplash && <AppSplashScreen />}
       <AppLoader {...appLoader} />
       <div className="m-auto flex max-w-(--breakpoint-lg) flex-col px-4 pt-4">
         <div className="mb-8 flex items-center justify-between">

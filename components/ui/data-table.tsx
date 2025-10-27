@@ -59,7 +59,7 @@ export function DataTable<TData, TValue>({
             </TableRow>
           ))}
         </TableHeader>
-        <TableBody className="relative block h-[242px] w-full overflow-scroll">
+        <TableBody className="relative block h-[242px] w-full overflow-y-scroll">
           {table.getRowModel().rows?.length ? (
             table.getRowModel().rows.map((row) => (
               <TableRow

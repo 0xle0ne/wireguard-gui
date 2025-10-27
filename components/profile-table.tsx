@@ -30,7 +30,7 @@ function ProfileNameCell({
   current?: string | null;
 }) {
   return (
-    <div className="flex items-center">
+    <div className="flex items-center h-6">
       {current === row.original.name ? (
         <div className="size-4 animate-pulse rounded-full bg-green-500" />
       ) : (

@@ -9,7 +9,7 @@
   "bundle": {
     "active": true,
     "category": "Utility",
-    "copyright": "Copyright (c) 2024-2025 Wireguard GUI Contributors",
+    "copyright": "Copyright (c) 2025-2026 Wireguard GUI Contributors",
     "targets": "all",
     "externalBin": [],
     "icon": [
@@ -40,7 +40,7 @@
   },
   "productName": "wireguard-gui",
   "mainBinaryName": "wireguard-gui",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "identifier": "com.wireguard-gui.io",
   "plugins": {},
   "app": {

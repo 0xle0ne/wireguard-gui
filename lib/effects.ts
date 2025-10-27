@@ -51,9 +51,10 @@ export function connect(
     .finally(onfinally);
 }
 
-export function useAppLoader() {
+export function useAppLoader(isOpen: boolean = false) {
   const [appLoader, setAppLoader] = React.useState<AppLoaderProps>({
     kind: 'Connecting',
+    isOpen,
   });
   return [appLoader, setAppLoader] as const;
 }

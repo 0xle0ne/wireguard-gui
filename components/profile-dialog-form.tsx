@@ -61,13 +61,13 @@ export function ProfileDialogForm({
 
   return (
     <Dialog open={open} onOpenChange={hookSetOpen}>
-      <div
+      <button
         onClick={openModal}
-        className={cn('cursor-pointer', className)}
+        className={cn(className, 'cursor-pointer')}
         title="New"
       >
         <Plus className="mr-2 size-4" />
-      </div>
+      </button>
       <DialogContent className="h-full sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>{editId ? 'Edit' : 'Create'} profile</DialogTitle>

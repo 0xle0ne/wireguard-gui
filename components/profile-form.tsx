@@ -130,7 +130,7 @@ export default function ProfileForm({
         {error ? <div className="text-sm text-red-500">{error}</div> : null}
         <Button
           variant="outline"
-          className="w-full"
+          className="w-full cursor-pointer"
           type="submit"
           disabled={isLoading}
         >
