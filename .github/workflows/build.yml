@@ -83,7 +83,8 @@ jobs:
             libsoup3-dev \
             zlib-dev \
             fribidi-dev \
-            librsvg
+            librsvg \
+            libayatana-appindicator-dev
 
       - name: Disable static CRT for musl linking
         run: |
