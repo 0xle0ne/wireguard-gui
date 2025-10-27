@@ -1,7 +1,7 @@
 import { defineConfig, globalIgnores } from 'eslint/config';
 import nextCoreWebVitals from 'eslint-config-next/core-web-vitals';
 import _import from 'eslint-plugin-import';
-import { fixupPluginRules } from '@eslint/compat';
+// import { fixupPluginRules } from '@eslint/compat';
 import tsParser from '@typescript-eslint/parser';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -27,11 +27,14 @@ export default defineConfig([
     'src-tauri/*',
     'out/*',
     'eslint.config.mjs',
+    'ts.config.json',
   ]),
   {
     extends: [...nextCoreWebVitals, ...compat.extends('prettier')],
 
-    plugins: {},
+    plugins: {
+      import: _import,
+    },
 
     languageOptions: {
       ecmaVersion: 5,

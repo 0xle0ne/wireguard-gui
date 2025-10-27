@@ -1,7 +1,5 @@
 @import 'tailwindcss';
 
-@config "../tailwind.config.ts";
-
 @custom-variant dark (&:is(.dark *));
 
 :root {
@@ -105,10 +103,7 @@
 }
 
 @layer base {
-  * {
-    @apply border-border outline-ring/50;
-  }
   body {
-    @apply bg-background text-foreground;
+    background-color: var(--background);
   }
 }
