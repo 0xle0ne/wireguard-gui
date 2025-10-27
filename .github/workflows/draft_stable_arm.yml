@@ -1,4 +1,4 @@
-name: Draft stable
+name: Draft stable ARM
 
 on:
   push:
