@@ -13,6 +13,7 @@ export function ProfileDialogDelete({ onDelete }: { onDelete: () => void }) {
   const deleteId = qs.get('d');
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (deleteId && !isOpen) return setIsOpen(true);
     if (!deleteId && isOpen) return setIsOpen(false);
   }, [isOpen, deleteId]);

@@ -3,11 +3,12 @@
   "scripts": {
     "dev": "tauri dev",
     "tauri": "tauri",
-    "lint": "next lint",
+    "lint": "eslint .",
     "next": "next",
     "clippy": "cargo clippy --manifest-path ./src-tauri/Cargo.toml",
     "next-build": "next build"
   },
+  "type": "module",
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
     "@radix-ui/react-accordion": "^1.2.12",
@@ -55,7 +56,7 @@
     "react-hook-form": "^7.65.0",
     "react-resizable-panels": "^3.0.6",
     "react-spinners": "^0.17.0",
-    "recharts": "^3.3.0",
+    "recharts": "^2.15.4",
     "rxjs": "^7.8.2",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.3.1",
@@ -64,6 +65,7 @@
     "zod": "^4.1.12"
   },
   "devDependencies": {
+    "@eslint/compat": "^1.4.0",
     "@ianvs/prettier-plugin-sort-imports": "^4.7.0",
     "@tailwindcss/postcss": "^4.1.16",
     "@tauri-apps/cli": "^2.9.1",

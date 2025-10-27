@@ -38,6 +38,7 @@ export function ProfileDialogForm({
 
   useEffect(() => {
     if (editId && data) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       return setOpen(true);
     } else {
       return setOpen(false);

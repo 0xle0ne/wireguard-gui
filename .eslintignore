@@ -1,8 +1,0 @@
-dist/*
-.cache
-public
-node_modules
-*.esm.js
-*.config.js
-src-tauri/*
-out/*

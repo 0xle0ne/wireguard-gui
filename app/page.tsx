@@ -27,7 +27,7 @@ export default function Index() {
   }, [fetchState, setAppLoader]);
 
   const onError = useCallback((err: any) => {
-    alert(err?.message || 'Unknow error');
+    alert(err?.message || 'Unknown error');
   }, []);
 
   const onConnect = useCallback(
@@ -44,6 +44,7 @@ export default function Index() {
     [setAppLoader, onConnectionFinish, onError],
   );
 
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const onDisconnect = useCallback(() => {
     setAppLoader({
       kind: 'Disconnecting',
