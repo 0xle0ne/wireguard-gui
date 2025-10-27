@@ -45,7 +45,7 @@ jobs:
           apk add --update alpine-sdk musl-dev g++ make openssl-dev git perl build-base dpkg bash
           rustup target add x86_64-unknown-linux-musl
 
-      - name: Install Node.js v20 LTS
+      - name: Install Node.js LTS
         uses: actions/setup-node@v3
         with:
           node-version: 22
@@ -58,7 +58,15 @@ jobs:
       - name: Install Tauri dependencies
         run: |
           apk add --no-cache ca-certificates curl gnupg libstdc++ libgcc
-          apk add --no-cache javascriptcoregtk-4.1 libsoup-3.0 webkit2gtk-4.1 libayatana-appindicator3-dev librsvg2-dev
+          apk add --no-cache \
+          build-base \
+          webkit2gtk \
+          curl \
+          wget \
+          file \
+          openssl \
+          libayatana-appindicator-dev \
+          librsvg
 
       - name: Install node dependencies
         run: npm install
