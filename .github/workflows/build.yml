@@ -73,7 +73,6 @@ jobs:
             curl \
             wget \
             file \
-            # Core graphics/text stack
             gtk+3.0-dev \
             webkit2gtk-4.1-dev \
             glib-dev \
