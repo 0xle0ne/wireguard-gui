@@ -50,17 +50,12 @@ jobs:
         with:
           node-version: 22
 
-      - name: Install Rust with Clippy
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-
       - name: Install Tauri dependencies
         run: |
           apk add --no-cache ca-certificates curl gnupg libstdc++ libgcc
           apk add --no-cache \
           build-base \
-          webkit2gtk \
+          webkit2gtk-4.1-dev \
           curl \
           wget \
           file \
