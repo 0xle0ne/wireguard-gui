@@ -57,10 +57,8 @@ jobs:
 
       - name: Install Tauri dependencies
         run: |
-          sudo apt-get update
-          sudo apt install --reinstall ca-certificates
-          sudo update-ca-certificates -f
-          sudo apt-get install javascriptcoregtk-4.1 libsoup-3.0 webkit2gtk-4.1 libayatana-appindicator3-dev librsvg2-dev -y
+          apk add --no-cache ca-certificates curl gnupg libstdc++ libgcc
+          apk add --no-cache javascriptcoregtk-4.1 libsoup-3.0 webkit2gtk-4.1 libayatana-appindicator3-dev librsvg2-dev
 
       - name: Install node dependencies
         run: npm install
