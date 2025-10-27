@@ -34,25 +34,25 @@ jobs:
       - uses: actions/cache@v3
         with:
           path: ./src-tauri/target
-          key: ${{ hashFiles('./src-tauri/Cargo.lock') }}
+          key: ubuntu-x86_64${{ hashFiles('./src-tauri/Cargo.lock') }}
 
       # Cache Rust
       - uses: actions/cache@v3
         with:
           path: ~/.cargo
-          key: ${{ hashFiles('./src-tauri/Cargo.lock') }}
+          key: ubuntu-x86_64${{ hashFiles('./src-tauri/Cargo.lock') }}
 
       # Cache Node
       - uses: actions/cache@v3
         with:
           path: ./node_modules
-          key: ${{ hashFiles('./package-lock.json') }}
+          key: ubuntu-x86_64${{ hashFiles('./package-lock.json') }}
 
       # Cache Next.js
       - uses: actions/cache@v3
         with:
           path: ./src-next/.next
-          key: ${{ hashFiles('./src-next/package-lock.json') }}
+          key: ubuntu-x86_64${{ hashFiles('./src-next/package-lock.json') }}
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable

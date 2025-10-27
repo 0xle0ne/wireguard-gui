@@ -413,8 +413,34 @@ fn build_tray(conn_st: &ConnSt, app: &App) -> Result<TrayIcon, Box<dyn std::erro
   Ok(tray)
 }
 
+#[cfg(target_os = "linux")]
+fn setup_appimage_gl_workarounds() {
+  use std::env;
+  if env::var_os("APPIMAGE").is_some() {
+    // Prefer software GL to avoid EGL surfaceless failures
+    if env::var_os("LIBGL_ALWAYS_SOFTWARE").is_none() {
+        env::set_var("LIBGL_ALWAYS_SOFTWARE", "1");
+    }
+    if env::var_os("MESA_LOADER_DRIVER_OVERRIDE").is_none() {
+        env::set_var("MESA_LOADER_DRIVER_OVERRIDE", "llvmpipe");
+    }
+    // Avoid Wayland/DMABUF renderer path that often triggers EGL_BAD_ALLOC
+    if env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+    // As a fallback, disable accelerated compositing
+    if env::var_os("WEBKIT_DISABLE_COMPOSITING_MODE").is_none() {
+        env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
+    }
+    // Optional: force X11 if Wayland causes issues (comment out if not needed)
+    // if env::var_os("GDK_BACKEND").is_none() { env::set_var("GDK_BACKEND", "x11"); }
+  }
+}
+
 #[tokio::main]
 async fn main() {
+  #[cfg(target_os = "linux")]
+  setup_appimage_gl_workarounds();
   let app_state = init_app_st().await;
   let conn_st = app_state.0.lock().await.conn_st.clone();
   // let system_tray = create_tray_menu(&app_state).await;
