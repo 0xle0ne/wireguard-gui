@@ -62,12 +62,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install javascriptcoregtk-4.1 libsoup-3.0 webkit2gtk-4.1 libayatana-appindicator3-dev librsvg2-dev -y
 
-      - name: Enable static CRT
-        run: |
-          echo "RUSTFLAGS=-C target-feature=+crt-static" >> $GITHUB_ENV
-          echo "PKG_CONFIG_ALLOW_CROSS=1" >> $GITHUB_ENV
-          echo "PKG_CONFIG_SYSROOT_DIR=/" >> $GITHUB_ENV
-
       - name: Install node dependencies
         run: npm install
 
@@ -87,8 +81,8 @@ jobs:
             $VERSION-$CHANNEL \
             -t $VERSION-$CHANNEL \
             -F ./CHANGELOG.md \
-            ./src-tauri/target/release/bundle/deb/wireguard-gui_${VERSION}_amd64.deb#wireguard-gui_amd64.deb \
-            ./src-tauri/target/release/bundle/appimage/wireguard-gui_${VERSION}_amd64.AppImage#wireguard-gui_amd64.AppImage
+            ./src-tauri/target/release/bundle/deb/wireguard-gui_${VERSION}_amd64.deb#wireguard-gui_arm64.deb \
+            ./src-tauri/target/release/bundle/appimage/wireguard-gui_${VERSION}_amd64.AppImage#wireguard-gui_arm64.AppImage
         env:
           GITHUB_TOKEN: ${{ secrets.CI_TOKEN }}
       - name: Update draft release
@@ -102,9 +96,9 @@ jobs:
             wireguard-gui_${VERSION}_amd64.AppImage|| true
           gh release upload \
             $VERSION-$CHANNEL \
-            ./src-tauri/target/release/bundle/deb/wireguard-gui_${VERSION}_amd64.deb#wireguard-gui_amd64.deb
+            ./src-tauri/target/release/bundle/deb/wireguard-gui_${VERSION}_amd64.deb#wireguard-gui_arm64.deb
           gh release upload \
             $VERSION-$CHANNEL \
-            ./src-tauri/target/release/bundle/appimage/wireguard-gui_${VERSION}_amd64.AppImage#wireguard-gui_amd64.AppImage
+            ./src-tauri/target/release/bundle/appimage/wireguard-gui_${VERSION}_amd64.AppImage#wireguard-gui_arm64.AppImage
         env:
           GITHUB_TOKEN: ${{ secrets.CI_TOKEN }}
