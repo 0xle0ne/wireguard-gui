@@ -2,7 +2,9 @@ import type { Viewport } from 'next';
 
 import '@/app/globals.css';
 
+import { IBM_Plex_Mono } from 'next/font/google';
 import { ThemeProvider } from '@/components/theme-provider';
+import { cn } from '@/lib/utils';
 
 export const viewport: Viewport = {
   themeColor: [
@@ -14,6 +16,12 @@ export const viewport: Viewport = {
   viewportFit: 'cover',
 };
 
+const font = IBM_Plex_Mono({
+  subsets: ['latin'],
+  weight: ['400', '500', '600'],
+  variable: '--font-ibm-plex-mono',
+});
+
 export default function RootLayout({
   children,
 }: {
@@ -22,7 +30,12 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head />
-      <body>
+      <body
+        className={cn(
+          'bg-background font-sans overflow-x-hidden antialiased',
+          font.variable,
+        )}
+      >
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
