@@ -48,7 +48,8 @@ jobs:
       - name: Install Node.js LTS
         uses: actions/setup-node@v3
         with:
-          node-version: 22
+          node-version: '22'
+          cache: 'npm'
 
       - name: Install Tauri dependencies
         run: |
