@@ -42,13 +42,13 @@ jobs:
 
       - name: Install dependencies
         run: |
-          apk add --update alpine-sdk musl-dev g++ make openssl-dev git perl build-base dpkg bash
+          apk add --update alpine-sdk musl-dev g++ make openssl-dev git perl build-base dpkg bash nodejs npm
           rustup target add x86_64-unknown-linux-musl
 
       - name: Install Node.js LTS
         uses: actions/setup-node@v3
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
       - name: Install Tauri dependencies
