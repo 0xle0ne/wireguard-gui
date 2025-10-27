@@ -1,4 +1,4 @@
-name: Draft stable
+name: Draft stable ARM
 
 on:
   push:
@@ -14,7 +14,7 @@ env:
 
 jobs:
   draft_stable:
-    runs-on: ubuntu-latest-arm
+    runs-on: ubuntu-24.04-arm
 
     steps:
       - uses: actions/checkout@v3
@@ -60,7 +60,13 @@ jobs:
       - name: Install Tauri dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install javascriptcoregtk-4.1 libsoup-3.0 webkit2gtk-4.1 libayatana-appindicator3-dev librsvg2-dev -y
+          sudo apt-get install -y libappindicator3-dev librsvg2-dev libudev-dev patchelf \
+            libwebkit2gtk-4.1-0=2.44.0-2 \
+            libwebkit2gtk-4.1-dev=2.44.0-2 \
+            libjavascriptcoregtk-4.1-0=2.44.0-2 \
+            libjavascriptcoregtk-4.1-dev=2.44.0-2 \
+            gir1.2-javascriptcoregtk-4.1=2.44.0-2 \
+            gir1.2-webkit2-4.1=2.44.0-2
 
       - name: Install node dependencies
         run: npm install
@@ -81,8 +87,8 @@ jobs:
             $VERSION-$CHANNEL \
             -t $VERSION-$CHANNEL \
             -F ./CHANGELOG.md \
-            ./src-tauri/target/release/bundle/deb/wireguard-gui_${VERSION}_amd64.deb#wireguard-gui_arm64.deb \
-            ./src-tauri/target/release/bundle/appimage/wireguard-gui_${VERSION}_amd64.AppImage#wireguard-gui_arm64.AppImage
+            ./src-tauri/target/release/bundle/deb/wireguard-gui_${VERSION}_arm64.deb#wireguard-gui_arm64.deb \
+            ./src-tauri/target/release/bundle/appimage/wireguard-gui_${VERSION}_aarch64.AppImage#wireguard-gui_aarch64.AppImage
         env:
           GITHUB_TOKEN: ${{ secrets.CI_TOKEN }}
       - name: Update draft release
@@ -90,15 +96,15 @@ jobs:
         run: |
           gh release delete-asset -y \
             $VERSION-$CHANNEL \
-            wireguard-gui_${VERSION}_amd64.deb || true
+            wireguard-gui_${VERSION}_arm64.deb || true
           gh release delete-asset -y \
             $VERSION-$CHANNEL \
-            wireguard-gui_${VERSION}_amd64.AppImage|| true
+            wireguard-gui_${VERSION}_aarch64.AppImage|| true
           gh release upload \
             $VERSION-$CHANNEL \
-            ./src-tauri/target/release/bundle/deb/wireguard-gui_${VERSION}_amd64.deb#wireguard-gui_arm64.deb
+            ./src-tauri/target/release/bundle/deb/wireguard-gui_${VERSION}_arm64.deb#wireguard-gui_arm64.deb
           gh release upload \
             $VERSION-$CHANNEL \
-            ./src-tauri/target/release/bundle/appimage/wireguard-gui_${VERSION}_amd64.AppImage#wireguard-gui_arm64.AppImage
+            ./src-tauri/target/release/bundle/appimage/wireguard-gui_${VERSION}_aarch64.AppImage#wireguard-gui_aarch64.AppImage
         env:
           GITHUB_TOKEN: ${{ secrets.CI_TOKEN }}
