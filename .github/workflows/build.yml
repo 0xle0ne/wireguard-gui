@@ -8,12 +8,9 @@ jobs:
   build:
     strategy:
       fail-fast: true
-      matrix:
-        os: [ubuntu-latest]
-        # Todo make it work on other OS ?
-        # , macos-latest, windows-latest]
 
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
+    container: rust:1.90.0-alpine3.22
 
     steps:
       - name: Checkout repository code
@@ -23,30 +20,35 @@ jobs:
       - uses: actions/cache@v3
         with:
           path: ./src-tauri/target
-          key: ${{matrix.os}}-${{ hashFiles('./src-tauri/Cargo.lock') }}
+          key: ubuntu-latest-${{ hashFiles('./src-tauri/Cargo.lock') }}
 
       # Cache Rust
       - uses: actions/cache@v3
         with:
           path: ~/.cargo
-          key: ${{matrix.os}}-${{ hashFiles('./src-tauri/Cargo.lock') }}
+          key: ubuntu-latest-${{ hashFiles('./src-tauri/Cargo.lock') }}
 
       # Cache Node
       - uses: actions/cache@v3
         with:
           path: ./node_modules
-          key: ${{matrix.os}}-${{ hashFiles('./package-lock.json') }}
+          key: ubuntu-latest-${{ hashFiles('./package-lock.json') }}
 
       # Cache Next.js
       - uses: actions/cache@v3
         with:
           path: ./src-next/.next
-          key: ${{matrix.os}}
+          key: ubuntu-latest
+
+      - name: Install dependencies
+        run: |
+          apk add --update alpine-sdk musl-dev g++ make openssl-dev git perl build-base dpkg bash
+          rustup target add x86_64-unknown-linux-musl
 
       - name: Install Node.js v20 LTS
         uses: actions/setup-node@v3
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Install Rust with Clippy
         uses: dtolnay/rust-toolchain@stable
@@ -54,7 +56,6 @@ jobs:
           components: rustfmt, clippy
 
       - name: Install Tauri dependencies
-        if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
           sudo apt install --reinstall ca-certificates
@@ -65,4 +66,4 @@ jobs:
         run: npm install
 
       - name: Build application
-        run: npm run tauri build -- --verbose
+        run: npm run tauri build -- --verbose --target x86_64-unknown-linux-musl
