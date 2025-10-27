@@ -88,7 +88,7 @@ jobs:
 
       - name: Disable static CRT for musl linking
         run: |
-          echo "RUSTFLAGS=-C target-feature=-crt-static" >> $GITHUB_ENV
+          echo "RUSTFLAGS=-C target-feature=+crt-static" >> $GITHUB_ENV
           echo "PKG_CONFIG_ALLOW_CROSS=1" >> $GITHUB_ENV
           echo "PKG_CONFIG_SYSROOT_DIR=/" >> $GITHUB_ENV
 
