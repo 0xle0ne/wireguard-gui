@@ -1,0 +1,2 @@
+# Allow any command from the wireguard-gui snap to be executed without a password prompt
+snap.wireguard-gui.* ALL=(ALL) NOPASSWD: ALL
