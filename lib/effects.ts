@@ -3,7 +3,7 @@ import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
 import type { AppState } from '@/types/app';
-import type { Profile, ProfilePartial } from '@/types/profile';
+import type { Profile, ProfilePartial, ImportResult, ExportResult } from '@/types/profile';
 import { AppLoaderProps } from '@/components/app-loader';
 
 export function useInvoke<T, I>(initialValue: I, cmd: string, args?: any) {
@@ -94,6 +94,32 @@ export function updateProfile<T>(
 ) {
   return require('@tauri-apps/api/core')
     .invoke('update_profile', { profileName, profile })
+    .then(onsuccess)
+    .catch(onerror)
+    .finally(onfinally);
+}
+
+export function importProfiles(
+  filePaths: string[],
+  onsuccess?: (d: ImportResult) => void,
+  onerror?: (err: any) => void,
+  onfinally?: () => void,
+) {
+  return require('@tauri-apps/api/core')
+    .invoke('import_profiles', { filePaths })
+    .then(onsuccess)
+    .catch(onerror)
+    .finally(onfinally);
+}
+
+export function exportProfiles(
+  targetDir: string,
+  onsuccess?: (d: ExportResult) => void,
+  onerror?: (err: any) => void,
+  onfinally?: () => void,
+) {
+  return require('@tauri-apps/api/core')
+    .invoke('export_profiles', { targetDir })
     .then(onsuccess)
     .catch(onerror)
     .finally(onfinally);

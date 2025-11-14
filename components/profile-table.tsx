@@ -3,10 +3,11 @@
 import React from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { ColumnDef } from '@tanstack/react-table';
-import { DeleteIcon, Edit, Rocket } from 'lucide-react';
+import { DeleteIcon, Edit, Rocket, Upload, Download } from 'lucide-react';
+import { toast } from 'sonner';
 
-import type { Profile } from '@/types/profile';
-import { useDebounce, useProfiles } from '@/lib/effects';
+import type { Profile, ImportResult, ExportResult } from '@/types/profile';
+import { useDebounce, useProfiles, importProfiles, exportProfiles } from '@/lib/effects';
 
 import { ProfileDialogDelete } from './profile-dialog-delete';
 import { ProfileDialogForm } from './profile-dialog-form';
@@ -167,10 +168,127 @@ export function ProfileTable({ current, onConnect }: ProfileTableProps) {
     [setDebounceFilter],
   );
 
+  const handleImport = React.useCallback(async () => {
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      const selected = await open({
+        multiple: true,
+        filters: [
+          {
+            name: 'WireGuard Config',
+            extensions: ['conf'],
+          },
+        ],
+      });
+
+      if (!selected || (Array.isArray(selected) && selected.length === 0)) {
+        return;
+      }
+
+      const paths = Array.isArray(selected) ? selected : [selected];
+
+      importProfiles(
+        paths,
+        (result: ImportResult) => {
+          fetchData();
+
+          const successCount = result.success.length;
+          const failCount = result.failed.length;
+
+          if (successCount > 0 && failCount === 0) {
+            const profileNames = result.success.length <= 3
+              ? `: ${result.success.join(', ')}`
+              : '';
+            toast.success(`Successfully imported ${successCount} profile(s)${profileNames}`);
+          } else if (successCount > 0 && failCount > 0) {
+            toast.warning(
+              `Imported ${successCount} profile(s), ${failCount} failed`,
+              {
+                description: result.failed.map(err => `${err.file_name}: ${err.error}`).join('\n')
+              }
+            );
+          } else {
+            toast.error('Import failed', {
+              description: result.failed.map(err => `${err.file_name}: ${err.error}`).join('\n')
+            });
+          }
+        },
+        (error) => {
+          toast.error('Import failed', {
+            description: String(error)
+          });
+        },
+      );
+    } catch (error) {
+      console.error('Import error:', error);
+    }
+  }, [fetchData]);
+
+  const handleExport = React.useCallback(async () => {
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      const selected = await open({
+        directory: true,
+        multiple: false,
+      });
+
+      if (!selected) {
+        return;
+      }
+
+      exportProfiles(
+        selected,
+        (result: ExportResult) => {
+          const successCount = result.success.length;
+          const failCount = result.failed.length;
+
+          if (successCount > 0 && failCount === 0) {
+            const profileNames = result.success.length <= 3
+              ? `: ${result.success.join(', ')}`
+              : '';
+            toast.success(`Successfully exported ${successCount} profile(s)${profileNames}`);
+          } else if (successCount > 0 && failCount > 0) {
+            toast.warning(
+              `Exported ${successCount} profile(s), ${failCount} failed`,
+              {
+                description: result.failed.map(err => `${err.profile_name}: ${err.error}`).join('\n')
+              }
+            );
+          } else {
+            toast.error('Export failed', {
+              description: result.failed.map(err => `${err.profile_name}: ${err.error}`).join('\n')
+            });
+          }
+        },
+        (error) => {
+          toast.error('Export failed', {
+            description: String(error)
+          });
+        },
+      );
+    } catch (error) {
+      console.error('Export error:', error);
+    }
+  }, []);
+
   return (
     <div>
       <ProfileDialogDelete onDelete={onDelete} />
-      <div className="relative mr-2 flex justify-end">
+      <div className="relative mr-2 flex justify-end gap-2">
+        <button
+          onClick={handleExport}
+          title="Export profiles"
+          className="absolute top-14 right-12 z-10 cursor-pointer"
+        >
+          <Download className="mr-2 size-4" />
+        </button>
+        <button
+          onClick={handleImport}
+          title="Import profiles"
+          className="absolute top-14 right-6 z-10 cursor-pointer"
+        >
+          <Upload className="mr-2 size-4" />
+        </button>
         <ProfileDialogForm
           data={editProfile}
           editId={editId}

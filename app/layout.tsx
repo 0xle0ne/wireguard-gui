@@ -4,6 +4,7 @@ import '@/app/globals.css';
 
 import { IBM_Plex_Mono } from 'next/font/google';
 import { ThemeProvider } from '@/components/theme-provider';
+import { Toaster } from '@/components/ui/sonner';
 import { cn } from '@/lib/utils';
 
 export const viewport: Viewport = {
@@ -42,6 +43,7 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           {children}
+          <Toaster />
         </ThemeProvider>
       </body>
     </html>
