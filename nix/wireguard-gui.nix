@@ -6,7 +6,7 @@
   cargo-tauri_1,
   darwin,
   glib-networking,
-  libsoup,
+  libsoup_3,
   nodejs_22,
   npmHooks,
   libiconv,
