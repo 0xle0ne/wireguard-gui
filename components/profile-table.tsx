@@ -220,7 +220,7 @@ export function ProfileTable({ current, onConnect }: ProfileTableProps) {
         },
       );
     } catch (error) {
-      console.error('Import error:', error);
+      toast.error('Import error', { description: String(error) });
     }
   }, [fetchData]);
 
@@ -267,7 +267,7 @@ export function ProfileTable({ current, onConnect }: ProfileTableProps) {
         },
       );
     } catch (error) {
-      console.error('Export error:', error);
+      toast.error('Import error', { description: String(error) });
     }
   }, []);
 
