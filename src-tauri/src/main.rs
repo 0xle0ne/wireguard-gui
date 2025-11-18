@@ -78,6 +78,30 @@ pub struct Profile {
   pub content: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImportResult {
+  pub success: Vec<String>,
+  pub failed: Vec<ImportError>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImportError {
+  pub file_name: String,
+  pub error: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExportResult {
+  pub success: Vec<String>,
+  pub failed: Vec<ExportError>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExportError {
+  pub profile_name: String,
+  pub error: String,
+}
+
 /// We create 2 scripts one to open a popup to allow root
 /// And the other to execute wg-quick as root with the provided config
 async fn create_scripts(conf_dir: &str) {
@@ -378,6 +402,151 @@ async fn list_profile(
   Ok(profiles)
 }
 
+#[tauri::command]
+async fn import_profiles(
+  app_state: State<'_, AppSt>,
+  file_paths: Vec<String>,
+) -> Result<ImportResult, AppError> {
+  let conf_dir = app_state.0.lock().await.conf_dir.clone();
+  let mut success = Vec::new();
+  let mut failed = Vec::new();
+
+  for file_path in file_paths {
+    let path = std::path::Path::new(&file_path);
+
+    // Get the file name
+    let Some(file_name) = path.file_name().and_then(|n| n.to_str()) else {
+      failed.push(ImportError {
+        file_name: file_path.clone(),
+        error: "Invalid file name".to_string(),
+      });
+      continue;
+    };
+
+    // Check if it's a .conf file
+    if !file_name.ends_with(".conf") {
+      failed.push(ImportError {
+        file_name: file_name.to_string(),
+        error: "File must have .conf extension".to_string(),
+      });
+      continue;
+    }
+
+    // Read file content
+    let content = match fs::read_to_string(path).await {
+      Ok(c) => c,
+      Err(e) => {
+        failed.push(ImportError {
+          file_name: file_name.to_string(),
+          error: format!("Failed to read file: {}", e),
+        });
+        continue;
+      }
+    };
+
+    // Validate content (minimum 8 characters)
+    if content.len() < 8 {
+      failed.push(ImportError {
+        file_name: file_name.to_string(),
+        error: "File content must be at least 8 characters".to_string(),
+      });
+      continue;
+    }
+
+    // Extract and sanitize profile name
+    let base_name = file_name.replace(".conf", "");
+    let sanitized_name: String = base_name
+      .chars()
+      .filter(|c| c.is_alphanumeric())
+      .collect();
+
+    if sanitized_name.is_empty() {
+      failed.push(ImportError {
+        file_name: file_name.to_string(),
+        error: "Profile name must contain at least one alphanumeric character".to_string(),
+      });
+      continue;
+    }
+
+    // Handle duplicate names by appending a number
+    let mut final_name = sanitized_name.clone();
+    let mut counter = 1;
+    loop {
+      let target_path = format!("{}/profiles/{}.conf", conf_dir, final_name);
+      if !fs::try_exists(&target_path).await.unwrap_or(false) {
+        break;
+      }
+      final_name = format!("{}_{}", sanitized_name, counter);
+      counter += 1;
+    }
+
+    // Write the profile
+    let target_path = format!("{}/profiles/{}.conf", conf_dir, final_name);
+    match fs::write(&target_path, content).await {
+      Ok(_) => success.push(final_name),
+      Err(e) => {
+        failed.push(ImportError {
+          file_name: file_name.to_string(),
+          error: format!("Failed to write profile: {}", e),
+        });
+      }
+    }
+  }
+
+  Ok(ImportResult { success, failed })
+}
+
+#[tauri::command]
+async fn export_profiles(
+  app_state: State<'_, AppSt>,
+  target_dir: String,
+) -> Result<ExportResult, AppError> {
+  let conf_dir = app_state.0.lock().await.conf_dir.clone();
+  let profiles_dir = format!("{}/profiles", conf_dir);
+
+  let mut success = Vec::new();
+  let mut failed = Vec::new();
+
+  // Read all profiles from the profiles directory
+  let mut dirs = match fs::read_dir(&profiles_dir).await {
+    Ok(d) => d,
+    Err(e) => {
+      return Err(AppError {
+        message: format!("Failed to read profiles directory: {}", e),
+      });
+    }
+  };
+
+  while let Ok(Some(entry)) = dirs.next_entry().await {
+    let path = entry.path();
+    let file_name = match path.file_name().and_then(|n| n.to_str()) {
+      Some(name) => name,
+      None => continue,
+    };
+
+    // Only process .conf files
+    if !file_name.ends_with(".conf") {
+      continue;
+    }
+
+    let profile_name = file_name.replace(".conf", "");
+    let target_path = format!("{}/{}", target_dir, file_name);
+
+    // Copy the file to the target directory
+    match fs::copy(&path, &target_path).await {
+      Ok(_) => success.push(profile_name),
+      Err(e) => {
+        failed.push(ExportError {
+          profile_name,
+          error: format!("Failed to export: {}", e),
+        });
+      }
+    }
+  }
+
+  Ok(ExportResult { success, failed })
+}
+
 fn build_tray(conn_st: &ConnSt, app: &App) -> Result<TrayIcon, Box<dyn std::error::Error>> {
   let title = MenuItem::with_id(app, "title", APP_TITLE, false, None::<&str>)?;
   let open_i = MenuItem::with_id(app, "open", "Open", true, None::<&str>)?;
@@ -457,6 +626,7 @@ async fn main() {
     Ok(())
   })
     .manage(app_state)
+    .plugin(tauri_plugin_dialog::init())
     .invoke_handler(tauri::generate_handler![
       get_state,
       list_profile,
@@ -465,6 +635,8 @@ async fn main() {
       create_profile,
       delete_profile,
       update_profile,
+      import_profiles,
+      export_profiles,
     ])
     // .plugin(tauri_plugin_window_state::Builder::default().build())
     .build(tauri::generate_context!())
