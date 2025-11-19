@@ -11,7 +11,7 @@ const hiddenStyle = { display: 'none', zIndex: -1, width: 0, height: 0 };
 export function AppLoader({ isOpen, message, kind }: AppLoaderProps) {
   return (
     <div
-      className="bg-background/400 fixed z-50 flex size-full items-center justify-center backdrop-blur"
+      className="bg-background fixed z-50 flex size-full items-center justify-center backdrop-blur"
       style={isOpen ? {} : hiddenStyle}
     >
       <div className="jusify-center flex flex-col items-center">
