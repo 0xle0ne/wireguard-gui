@@ -171,8 +171,12 @@ export function ProfileTable({ current, onConnect }: ProfileTableProps) {
   const handleImport = React.useCallback(async () => {
     try {
       const { open } = await import('@tauri-apps/plugin-dialog');
+      const { homeDir } = await import('@tauri-apps/api/path');
+      const home = await homeDir();
+      
       const selected = await open({
         multiple: true,
+        defaultPath: `${home}/.config/wireguard-gui/profiles`,
         filters: [
           {
             name: 'WireGuard Config',
