@@ -93,7 +93,7 @@ export default function Index() {
           {state.conn_st === 'Connected' ? (
             <Lock className="mb-2 size-16 text-green-500" />
           ) : (
-            <Unlock className="animate-pulsemb-2 size-16 text-red-500" />
+            <Unlock className="animate-pulse mb-2 size-16 text-red-500" />
           )}
           <p className="mt-2 font-bold">{state.current || 'Not connected'}</p>
           <p className="font-bold">{state?.pub_ip || 'ip undetected'}</p>
