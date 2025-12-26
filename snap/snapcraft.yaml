@@ -1,11 +1,15 @@
-name: wireguard-gui # you probably want to 'snapcraft register <name>'
-base: core22 # the base snap is the execution environment for this snap
-version: '0.1.1' # just for humans, typically '1.2+git' or '1.3.2'
-summary: Wireguard client GUI made with nextauri
+name: wireguard-gui
+base: core22
+version: '0.1.9'
+summary: WireGuard client GUI made with nextauri
 icon: src-tauri/icons/128x128.png
 description: |
-  Provide a Wireguard client GUI for easy profile management
-grade: stable # must be 'stable' to release into candidate/stable channels
+  Provides a WireGuard client GUI for easy profile management
+  
+  This snap uses the network-control interface to manage WireGuard
+  connections without requiring pkexec or sudo, making it work
+  properly in strict snap confinement.
+grade: stable
 source-code: https://github.com/leon3s/wireguard-gui
 confinement: strict
 architectures:
@@ -17,6 +21,9 @@ apps:
     common-id: com.wireguard-gui.gg
     extensions: [gnome]
     desktop: usr/share/applications/wireguard-gui.desktop
+    environment:
+      # Enable WireGuard operations via network-control interface
+      WG_QUICK_USERSPACE_IMPLEMENTATION: wireguard-go
     plugs:
       - home
       - network
@@ -29,37 +36,87 @@ apps:
       - network-setup-control
       - login-session-observe
       - network-observe
+      - desktop
+      - desktop-legacy
 
 parts:
-  wireguard-gui:
+  rust:
     plugin: nil
-    override-build: |
-      wget https://github.com/leon3s/wireguard-gui/releases/download/0.1.0-stable/wireguard-gui_0.1.0_amd64.deb
-      dpkg -x wireguard-gui_0.1.0_amd64.deb $SNAPCRAFT_PART_INSTALL/
     build-packages:
-      - dpkg
-      - wget
+      - curl
+    override-build: |
+      # Install Rust toolchain
+      curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+      craftctl default
+    build-environment:
+      - PATH: "${HOME}/.cargo/bin:${PATH}"
 
+  wireguard-gui:
+    after: [rust]
+    plugin: npm
+    source: .
+    npm-include-node: true
+    npm-node-version: "20.11.0"
+    override-build: |
+      # Set up Rust environment
+      export PATH="${HOME}/.cargo/bin:${PATH}"
+      
+      # Install dependencies
+      npm install
+      
+      # Build Tauri app
+      npm run tauri build
+      
+      # Install files
+      mkdir -p ${SNAPCRAFT_PART_INSTALL}/usr/bin
+      mkdir -p ${SNAPCRAFT_PART_INSTALL}/usr/share/applications
+      mkdir -p ${SNAPCRAFT_PART_INSTALL}/usr/share/icons/hicolor/128x128/apps
+      
+      # Copy binary
+      cp src-tauri/target/release/wireguard-gui ${SNAPCRAFT_PART_INSTALL}/usr/bin/
+      
+      # Copy icon
+      cp src-tauri/icons/128x128.png ${SNAPCRAFT_PART_INSTALL}/usr/share/icons/hicolor/128x128/apps/wireguard-gui.png
+      
+      # Create desktop file
+      cat > ${SNAPCRAFT_PART_INSTALL}/usr/share/applications/wireguard-gui.desktop << DESKTOP
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=WireGuard GUI
+Comment=Manage WireGuard VPN profiles
+Exec=wireguard-gui
+Icon=\${SNAP}/usr/share/icons/hicolor/128x128/apps/wireguard-gui.png
+Terminal=false
+Categories=Network;System;
+DESKTOP
+
+    build-packages:
+      - wget
+      - file
+      - pkg-config
+      - libssl-dev
+      - libgtk-3-dev
+      - libwebkit2gtk-4.1-dev
+      - libayatana-appindicator3-dev
+      - librsvg2-dev
+      - patchelf
+      - libjavascriptcoregtk-4.1-dev
+      - libsoup-3.0-dev
+      
     stage-packages:
       - wireguard-tools
-      - zenity
+      - libwebkit2gtk-4.1-0
+      - libjavascriptcoregtk-4.1-0
+      - libayatana-appindicator3-1
+      - libsoup-3.0-0
+      
     prime:
       - -usr/share/doc
-      - -usr/share/fonts
-      - -usr/share/icons
-      - -usr/share/lintian
       - -usr/share/man
 
-# Mount webkit2gtk-4
+# Mount webkit2gtk and set up WireGuard directories
 layout:
-  /usr/lib/$SNAPCRAFT_ARCH_TRIPLET/webkit2gtk-4.0:
-    bind: $SNAP/usr/lib/$SNAPCRAFT_ARCH_TRIPLET/webkit2gtk-4.0
-  /usr/lib/NetworkManager:
-    bind: $SNAP/usr/lib/NetworkManager
-  /etc/NetworkManager:
-    # Using 'conf' to keep compatibility with older NM snaps. Another option
-    # would be to copy around the systems connections when refreshing.
-    bind: $SNAP_DATA/conf
-  /var/lib/NetworkManager:
-    bind: $SNAP_DATA/var/lib/NetworkManager
+  /usr/lib/$SNAPCRAFT_ARCH_TRIPLET/webkit2gtk-4.1:
+    bind: $SNAP/usr/lib/$SNAPCRAFT_ARCH_TRIPLET/webkit2gtk-4.1
 
