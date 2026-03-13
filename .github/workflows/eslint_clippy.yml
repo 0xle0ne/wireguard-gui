@@ -57,7 +57,7 @@ jobs:
         run: mkdir out
 
       - name: Install node dependencies
-        run: npm install
+        run: npm install --legacy-peer-deps
 
       - name: Run Eslint
         run: npm run lint

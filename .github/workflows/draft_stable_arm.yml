@@ -69,7 +69,7 @@ jobs:
             gir1.2-webkit2-4.1=2.44.0-2
 
       - name: Install node dependencies
-        run: npm install
+        run: npm install --legacy-peer-deps
 
       - name: Build application
         run: npm run tauri build
