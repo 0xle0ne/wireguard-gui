@@ -14,7 +14,7 @@ architectures:
 apps:
   wireguard-gui:
     command: usr/bin/wireguard-gui
-    common-id: com.wireguard-gui.gg
+    common-id: com.wireguard-gui.io
     extensions: [gnome]
     desktop: usr/share/applications/wireguard-gui.desktop
     plugs:
@@ -62,4 +62,3 @@ layout:
     bind: $SNAP_DATA/conf
   /var/lib/NetworkManager:
     bind: $SNAP_DATA/var/lib/NetworkManager
-
