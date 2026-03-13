@@ -2,11 +2,16 @@
 
 use std::{collections::HashMap, os::unix::fs::PermissionsExt, sync::Arc};
 
-use tokio::{fs, sync::Mutex, process::Command};
+use tokio::{
+  fs,
+  process::Command,
+  sync::Mutex,
+  time::{Duration, MissedTickBehavior},
+};
 use serde::{Serialize, Deserialize};
 
 use tauri::{
-  image::Image, menu::{Menu, MenuItem}, tray::{TrayIcon, TrayIconBuilder}, App, AppHandle, Manager, State
+  image::Image, menu::{Menu, MenuItem}, tray::{TrayIcon, TrayIconBuilder}, App, AppHandle, Emitter, Manager, State
 };
 
 const WG_SCRIPT: &str = include_str!("../scripts/wg.sh");
@@ -14,6 +19,8 @@ const WG_SCRIPT: &str = include_str!("../scripts/wg.sh");
 const WG_ZENITY_SCRIPT: &str = include_str!("../scripts/zenity.sh");
 
 const APP_TITLE: &str = "Wireguard GUI";
+const APP_STATE_CHANGED_EVENT: &str = "app-state-changed";
+const NM_CONN_PREFIX: &str = "wg-gui-";
 
 const TRAY_CONNECTED_ICON: &[u8] =
   include_bytes!("../icons/tray_connected.png");
@@ -117,12 +124,250 @@ async fn create_scripts(conf_dir: &str) {
     .unwrap();
 }
 
+fn profile_from_nm_conn_name(name: &str) -> Option<String> {
+  Some(
+    name.strip_prefix(NM_CONN_PREFIX)
+      .unwrap_or(name)
+      .to_owned(),
+  )
+}
+
+async fn get_active_nm_profile(current_hint: Option<&str>) -> Option<String> {
+  println!(
+    "[wg-gui] get_active_nm_profile: current_hint={:?}",
+    current_hint,
+  );
+  let output = Command::new("nmcli")
+    .args(["-t", "-f", "NAME,TYPE", "connection", "show", "--active"])
+    .output()
+    .await
+    .ok()?;
+  if !output.status.success() {
+    println!(
+      "[wg-gui] get_active_nm_profile: nmcli failed status={:?} stderr={}",
+      output.status.code(),
+      String::from_utf8_lossy(&output.stderr),
+    );
+    return None;
+  }
+  println!(
+    "[wg-gui] get_active_nm_profile: stdout={} stderr={}",
+    String::from_utf8_lossy(&output.stdout).trim(),
+    String::from_utf8_lossy(&output.stderr).trim(),
+  );
+  let active_wireguard_names = String::from_utf8(output.stdout)
+    .ok()?
+    .lines()
+    .filter_map(|line| {
+      let (name, conn_type) = line.rsplit_once(':')?;
+      let conn_type = conn_type.trim().to_ascii_lowercase();
+      if conn_type != "wireguard" && conn_type != "vpn" {
+        return None;
+      }
+      Some(name.to_owned())
+    })
+    .collect::<Vec<_>>();
+  println!(
+    "[wg-gui] get_active_nm_profile: filtered_active_names={:?}",
+    active_wireguard_names,
+  );
+
+  if let Some(current) = current_hint {
+    let prefixed = format!("{NM_CONN_PREFIX}{current}");
+    if active_wireguard_names.iter().any(|name| name == current || name == &prefixed) {
+      println!(
+        "[wg-gui] get_active_nm_profile: matched current_hint={} prefixed={}",
+        current,
+        prefixed,
+      );
+      return Some(current.to_owned());
+    }
+
+    println!(
+      "[wg-gui] get_active_nm_profile: no active match for current_hint={} prefixed={}",
+      current,
+      prefixed,
+    );
+    return None;
+  }
+
+  let detected = active_wireguard_names
+    .iter()
+    .find_map(|name| profile_from_nm_conn_name(name));
+  println!(
+    "[wg-gui] get_active_nm_profile: detected_without_hint={:?}",
+    detected,
+  );
+  detected
+}
+
+async fn read_current_profile(conf_dir: &str) -> Option<String> {
+  fs::read_to_string(format!("{conf_dir}/current"))
+    .await
+    .ok()
+    .map(|value| value.trim().to_owned())
+    .filter(|value| !value.is_empty())
+}
+
+async fn detect_connection_state(
+  current_hint: Option<String>,
+  conf_dir: &str,
+) -> (ConnSt, Option<String>) {
+  println!(
+    "[wg-gui] detect_connection_state: is_snap={} current_hint={:?} conf_dir={}",
+    std::env::var_os("IS_SNAP").is_some(),
+    current_hint,
+    conf_dir,
+  );
+  if std::env::var_os("IS_SNAP").is_some() {
+    let snap_hint = match current_hint {
+      Some(current) => Some(current),
+      None => read_current_profile(conf_dir).await,
+    };
+    println!(
+      "[wg-gui] detect_connection_state: snap_hint={:?}",
+      snap_hint,
+    );
+
+    if let Some(profile) = get_active_nm_profile(snap_hint.as_deref()).await {
+      println!(
+        "[wg-gui] detect_connection_state: snap connected profile={}",
+        profile,
+      );
+      return (ConnSt::Connected, Some(profile));
+    }
+
+    println!("[wg-gui] detect_connection_state: snap disconnected");
+    return (ConnSt::Disconnected, None);
+  }
+
+  let current = match current_hint {
+    Some(current) => Some(current),
+    None => read_current_profile(conf_dir).await,
+  };
+  println!(
+    "[wg-gui] detect_connection_state: non-snap current={:?}",
+    current,
+  );
+
+  if let Some(current_name) = current.as_deref()
+    && get_con_st(current_name).await == ConnSt::Connected {
+      println!(
+        "[wg-gui] detect_connection_state: interface connected current={}",
+        current_name,
+      );
+      return (ConnSt::Connected, Some(current_name.to_owned()));
+  }
+
+  // Fallback: check NM for active WireGuard connections (handles both
+  // wg-gui-<name> prefixed and exact-name connections)
+  if let Some(profile) = get_active_nm_profile(current.as_deref()).await {
+    println!(
+      "[wg-gui] detect_connection_state: NM fallback connected profile={}",
+      profile,
+    );
+    return (ConnSt::Connected, Some(profile));
+  }
+
+  println!("[wg-gui] detect_connection_state: disconnected");
+  (ConnSt::Disconnected, None)
+}
+
+async fn sync_connection_state(
+  app: &AppHandle,
+  app_state: &AppSt,
+) -> Result<(), AppError> {
+  let (conf_dir, previous) = {
+    let s = app_state.0.lock().await;
+    (
+      s.conf_dir.clone(),
+      (s.conn_st.clone(), s.current.clone(), s.pub_ip.clone()),
+    )
+  };
+  let (prev_conn_st, prev_current, prev_pub_ip) = previous;
+  println!(
+    "[wg-gui] sync_connection_state: previous conn_st={:?} current={:?} pub_ip={:?}",
+    prev_conn_st,
+    prev_current,
+    prev_pub_ip,
+  );
+
+  let (next_conn_st, next_current) = detect_connection_state(prev_current.clone(), &conf_dir).await;
+  let state_changed = next_conn_st != prev_conn_st || next_current != prev_current;
+  let next_pub_ip = if next_conn_st == ConnSt::Connected {
+    if state_changed || prev_pub_ip.is_none() {
+      get_pub_ip().await.ok()
+    } else {
+      prev_pub_ip.clone()
+    }
+  } else if state_changed {
+    get_pub_ip().await.ok()
+  } else {
+    prev_pub_ip.clone()
+  };
+  println!(
+    "[wg-gui] sync_connection_state: next conn_st={:?} current={:?} pub_ip={:?} state_changed={}",
+    next_conn_st,
+    next_current,
+    next_pub_ip,
+    state_changed,
+  );
+
+  if !state_changed && next_pub_ip == prev_pub_ip {
+    println!("[wg-gui] sync_connection_state: no update needed");
+    return Ok(());
+  }
+
+  {
+    let mut s = app_state.0.lock().await;
+    s.conn_st = next_conn_st.clone();
+    s.current = next_current.clone();
+    s.pub_ip = next_pub_ip;
+  }
+
+  if let Some(current) = next_current {
+    let _ = fs::write(format!("{conf_dir}/current"), current.trim()).await;
+  } else {
+    let _ = fs::remove_file(format!("{conf_dir}/current")).await;
+  }
+
+  if let Some(tray) = app.tray_by_id("main") {
+    let icon = if next_conn_st == ConnSt::Connected {
+      TRAY_CONNECTED_ICON
+    } else {
+      TRAY_DISCONNECTED_ICON
+    };
+    println!(
+      "[wg-gui] sync_connection_state: updating tray icon for conn_st={:?}",
+      next_conn_st,
+    );
+    let _ = tray.set_icon(Some(Image::from_bytes(icon).unwrap()));
+  }
+
+  let payload = app_state.0.lock().await.clone();
+  println!(
+    "[wg-gui] sync_connection_state: emitting payload conn_st={:?} current={:?} pub_ip={:?}",
+    payload.conn_st,
+    payload.current,
+    payload.pub_ip,
+  );
+  let _ = app.emit(APP_STATE_CHANGED_EVENT, payload);
+  Ok(())
+}
+
 async fn get_con_st(current: &str) -> ConnSt {
   let output = Command::new("ip")
     .args(["-br", "link", "show", "dev", current])
     .output()
     .await
     .expect("ip command failed");
+  println!(
+    "[wg-gui] get_con_st: current={} status={:?} stdout={} stderr={}",
+    current,
+    output.status.code(),
+    String::from_utf8_lossy(&output.stdout).trim(),
+    String::from_utf8_lossy(&output.stderr).trim(),
+  );
   // check status code
   if output.status.success() {
     return ConnSt::Connected;
@@ -133,59 +378,28 @@ async fn get_con_st(current: &str) -> ConnSt {
 async fn init_app_st() -> AppSt {
   let default_state = AppStInner::default();
   let conf_dir = default_state.conf_dir.clone();
-  let current = fs::read_to_string(format!("{conf_dir}/current")).await;
+  let current = read_current_profile(&conf_dir).await;
   let app_state = AppSt(Arc::new(Mutex::new(default_state)));
   create_scripts(&conf_dir).await;
+  let (conn_st, current) = detect_connection_state(current, &conf_dir).await;
   let mut s = app_state.0.lock().await;
   s.pub_ip = (get_pub_ip().await).ok();
-  if let Ok(current) = current {
-    s.conn_st = get_con_st(&current).await;
-    s.current = Some(current);
-    if s.conn_st == ConnSt::Disconnected {
-      s.current = None;
-      let _ = fs::remove_file(format!("{}/current", s.conf_dir)).await;
-    }
+  s.conn_st = conn_st;
+  s.current = current;
+  if s.current.is_none() {
+    let _ = fs::remove_file(format!("{}/current", s.conf_dir)).await;
   }
   app_state.clone()
 }
-
-// async fn create_tray_menu(app_state: &AppSt) -> SystemTray {
-//   let wgui = CustomMenuItem::new("wgui".to_string(), APP_TITLE).disabled();
-//   let open = CustomMenuItem::new("open".to_string(), "Open");
-//   let quit = CustomMenuItem::new("quit".to_string(), "Quit");
-//   let mut system_tray = SystemTray::new();
-//   let mut tray_menu = SystemTrayMenu::new()
-//     .add_item(wgui)
-//     .add_native_item(SystemTrayMenuItem::Separator)
-//     .add_item(open);
-//   let s = app_state.0.lock().await;
-//   if s.conn_st == ConnSt::Connected {
-//     tray_menu = tray_menu.add_item(
-//       CustomMenuItem::new(
-//         "conn_info".to_string(),
-//         format!("Selected {}", s.current.clone().unwrap()),
-//       )
-//       .disabled(),
-//     );
-//     system_tray =
-//       system_tray.with_icon(Icon::Raw(TRAY_CONNECTED_ICON.to_vec()));
-//   } else {
-//     tray_menu = tray_menu.add_item(
-//       CustomMenuItem::new("conn_info".to_string(), "Not connected").disabled(),
-//     );
-//     system_tray =
-//       system_tray.with_icon(Icon::Raw(TRAY_DISCONNECTED_ICON.to_vec()));
-//   }
-//   tray_menu = tray_menu
-//     .add_native_item(SystemTrayMenuItem::Separator)
-//     .add_item(quit);
-//   system_tray.with_menu(tray_menu).with_tooltip(APP_TITLE)
-// }
 
 async fn exec_wg(app_state: &AppSt, profile: &str) -> Result<(), AppError> {
   let conf_dir = app_state.0.lock().await.conf_dir.clone();
   let mut envs = HashMap::new();
   envs.insert("PROFILE".to_owned(), profile);
+  if std::env::var_os("IS_SNAP").is_some() {
+    envs.insert("IS_SNAP".to_owned(), "true");
+    println!("Running in snap environment, setting IS_SNAP env variable for wg.sh");
+  }
   let res = Command::new("bash")
     .args([format!("{conf_dir}/wg.sh")])
     .envs(envs)
@@ -228,10 +442,13 @@ async fn create_profile(
   let s = app_state.0.lock().await.clone();
   // allow only alphanumerac
   let name = new_profile.name;
-  if !name.chars().all(char::is_alphanumeric) {
-    return Err(AppError {
-      message: "Name must only containt alphanumeric values".to_owned(),
-    });
+  // allow alphanumeric and - and _
+  if !name
+    .chars()
+    .all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+      return Err(AppError {
+        message: "Name must only containt alphanumeric values, - or _".to_owned(),
+      });
   }
   let path = format!("{}/profiles/{name}.conf", s.conf_dir);
   if fs::try_exists(&path).await.unwrap() {
@@ -250,34 +467,13 @@ async fn delete_profile(
   profile_name: String,
 ) -> Result<(), AppError> {
   let s = app_state.0.lock().await.clone();
-  if let Some(current) = s.current {
-    if current == profile_name {
+  if let Some(current) = s.current
+    && current == profile_name {
       exec_wg(&app_state, &current).await?;
       // Sleep for to let time for network to stabilize
-      tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-      let mut s = app_state.0.lock().await;
-      s.current = None;
-      s.conn_st = ConnSt::Disconnected;
-      let tray = app.tray_by_id("main").unwrap();
-      tray.set_icon(Some(Image::from_bytes(TRAY_DISCONNECTED_ICON).unwrap()))
-        .unwrap();
-      // app
-      //   .tray_handle()
-      //   .set_icon(Icon::Raw(TRAY_DISCONNECTED_ICON.to_vec()))
-      //   .unwrap();
-      // app
-      //   .tray_handle()
-      //   .get_item("conn_info")
-      //   .set_title("Not connected")
-      //   .unwrap();
-      // app
-      //   .tray_handle()
-      //   .get_item("conn_info")
-      //   .set_enabled(false)
-      //   .unwrap();
-      s.pub_ip = (get_pub_ip().await).ok();
+      tokio::time::sleep(Duration::from_secs(1)).await;
+      sync_connection_state(&app, &app_state).await?;
     };
-  };
   let path = format!("{}/profiles/{profile_name}.conf", s.conf_dir);
   let _ = fs::remove_file(path).await;
   Ok(())
@@ -299,15 +495,9 @@ async fn connect_profile(
   tokio::fs::write(format!("{conf_dir}/current"), &profile.trim())
     .await
     .unwrap();
-  // Sleep for 5 seconds to let time for network to stabilize
-  tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-  let mut s = app_state.0.lock().await;
-  s.current = Some(profile);
-  s.conn_st = ConnSt::Connected;
-  s.pub_ip = (get_pub_ip().await).ok();
-  let tray = app.tray_by_id("main").unwrap();
-  tray.set_icon(Some(Image::from_bytes(TRAY_CONNECTED_ICON).unwrap()))
-    .unwrap();
+  // Sleep for 1 second to let time for network to stabilize
+  tokio::time::sleep(Duration::from_secs(1)).await;
+  sync_connection_state(&app, &app_state).await?;
   Ok(())
 }
 
@@ -322,34 +512,15 @@ async fn disconnect(
   };
   exec_wg(&app_state, &current).await?;
   let _ = fs::remove_file(format!("{}/current", s.conf_dir)).await;
-  // Sleep for 1seconds to let time for network to stabilize
-  tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-  let mut s = app_state.0.lock().await;
-  s.current = None;
-  s.conn_st = ConnSt::Disconnected;
-  // app
-  //   .tray_handle()
-  //   .set_icon(Icon::Raw(TRAY_DISCONNECTED_ICON.to_vec()))
-  //   .unwrap();
-  // app
-  //   .tray_handle()
-  //   .get_item("conn_info")
-  //   .set_title("Not connected")
-  //   .unwrap();
-  // app
-  //   .tray_handle()
-  //   .get_item("conn_info")
-  //   .set_enabled(false)
-  //   .unwrap();
-  let tray = app.tray_by_id("main").unwrap();
-  tray.set_icon(Some(Image::from_bytes(TRAY_DISCONNECTED_ICON).unwrap()))
-    .unwrap();
-  s.pub_ip = (get_pub_ip().await).ok();
+  // Sleep for 1 second to let time for network to stabilize
+  tokio::time::sleep(Duration::from_secs(1)).await;
+  sync_connection_state(&app, &app_state).await?;
   Ok(())
 }
 
 #[tauri::command]
 async fn update_profile(
+  app: AppHandle,
   app_state: State<'_, AppSt>,
   profile_name: String,
   profile: ProfilePartial,
@@ -362,20 +533,18 @@ async fn update_profile(
     });
   }
   let mut is_current = false;
-  if let Some(current) = s.current {
-    if profile_name == current {
+  if let Some(current) = s.current
+    && profile_name == current {
       exec_wg(&app_state, &profile_name).await?;
       is_current = true;
     }
-  }
   fs::write(path, profile.content).await.unwrap();
   if !is_current {
     return Ok(());
   }
   exec_wg(&app_state, &profile_name).await?;
-  tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-  let mut s = app_state.0.lock().await;
-  s.pub_ip = (get_pub_ip().await).ok();
+  tokio::time::sleep(Duration::from_secs(1)).await;
+  sync_connection_state(&app, &app_state).await?;
   Ok(())
 }
 
@@ -585,22 +754,25 @@ fn build_tray(conn_st: &ConnSt, app: &App) -> Result<TrayIcon, Box<dyn std::erro
 #[cfg(target_os = "linux")]
 fn setup_appimage_gl_workarounds() {
   use std::env;
+
+  fn set_env_if_unset(key: &str, value: &str) {
+    if env::var_os(key).is_none() {
+      // SAFETY: this runs during process startup before the app initializes
+      // WebKit/Tauri state that depends on these variables.
+      unsafe {
+        env::set_var(key, value);
+      }
+    }
+  }
+
   if env::var_os("APPIMAGE").is_some() {
     // Prefer software GL to avoid EGL surfaceless failures
-    if env::var_os("LIBGL_ALWAYS_SOFTWARE").is_none() {
-        env::set_var("LIBGL_ALWAYS_SOFTWARE", "1");
-    }
-    if env::var_os("MESA_LOADER_DRIVER_OVERRIDE").is_none() {
-        env::set_var("MESA_LOADER_DRIVER_OVERRIDE", "llvmpipe");
-    }
+    set_env_if_unset("LIBGL_ALWAYS_SOFTWARE", "1");
+    set_env_if_unset("MESA_LOADER_DRIVER_OVERRIDE", "llvmpipe");
     // Avoid Wayland/DMABUF renderer path that often triggers EGL_BAD_ALLOC
-    if env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
-        env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
-    }
+    set_env_if_unset("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     // As a fallback, disable accelerated compositing
-    if env::var_os("WEBKIT_DISABLE_COMPOSITING_MODE").is_none() {
-        env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
-    }
+    set_env_if_unset("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
     // Optional: force X11 if Wayland causes issues (comment out if not needed)
     // if env::var_os("GDK_BACKEND").is_none() { env::set_var("GDK_BACKEND", "x11"); }
   }
@@ -612,6 +784,8 @@ async fn main() {
   setup_appimage_gl_workarounds();
   let app_state = init_app_st().await;
   let conn_st = app_state.0.lock().await.conn_st.clone();
+  let managed_app_state = app_state.clone();
+  let setup_app_state = app_state.clone();
   // let system_tray = create_tray_menu(&app_state).await;
   tauri::Builder::default()
   .on_window_event(|window, event| {
@@ -623,9 +797,20 @@ async fn main() {
   })
   .setup(move |app| {
     build_tray(&conn_st, app)?;
+    let app_handle = app.handle().clone();
+    let monitor_state = setup_app_state.clone();
+    tauri::async_runtime::spawn(async move {
+      let _ = sync_connection_state(&app_handle, &monitor_state).await;
+      let mut interval = tokio::time::interval(Duration::from_secs(1));
+      interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
+      loop {
+        interval.tick().await;
+        let _ = sync_connection_state(&app_handle, &monitor_state).await;
+      }
+    });
     Ok(())
   })
-    .manage(app_state)
+    .manage(managed_app_state)
     .plugin(tauri_plugin_dialog::init())
     .invoke_handler(tauri::generate_handler![
       get_state,

@@ -161,6 +161,10 @@
   }
 }
 
+button {
+  cursor: pointer;
+}
+
 /* total width */
 ::-webkit-scrollbar {
   width: 6px;
