@@ -23,7 +23,50 @@ export function useInvoke<T, I>(initialValue: I, cmd: string, args?: any) {
 }
 
 export function useAppState() {
-  return useInvoke<AppState, AppState>({}, 'get_state');
+  const state = useInvoke<AppState, AppState>({}, 'get_state');
+  const [, , , setData, fetchState] = state;
+
+  React.useEffect(() => {
+    let unlisten: undefined | (() => void);
+    let disposed = false;
+    require('@tauri-apps/api/event')
+      .listen('app-state-changed', (event: { payload: AppState }) => {
+        if (!disposed) {
+          setData(event.payload);
+        }
+      })
+      .then((dispose: () => void) => {
+        unlisten = dispose;
+      })
+      .catch(() => undefined);
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [setData]);
+
+  React.useEffect(() => {
+    const onVisible = () => {
+      if (!document.hidden) {
+        fetchState();
+      }
+    };
+
+    const interval = window.setInterval(() => {
+      fetchState();
+    }, 3000);
+
+    window.addEventListener('focus', fetchState);
+    document.addEventListener('visibilitychange', onVisible);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', fetchState);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [fetchState]);
+
+  return state;
 }
 
 export function useProfiles() {
