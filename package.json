@@ -78,7 +78,7 @@
     "@typescript-eslint/parser": "^8.57.0",
     "autoprefixer": "^10.4.27",
     "baseline-browser-mapping": "^2.10.7",
-    "eslint": "10.0.3",
+    "eslint": "^9",
     "eslint-config-next": "16.1.6",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.5",
