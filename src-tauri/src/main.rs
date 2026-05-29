@@ -6,7 +6,7 @@ use tokio::{
   fs,
   process::Command,
   sync::Mutex,
-  time::{Duration, MissedTickBehavior},
+  time::{timeout, Duration, MissedTickBehavior},
 };
 use serde::{Serialize, Deserialize};
 
@@ -75,6 +75,23 @@ unsafe impl Send for AppSt {}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct AppError {
   message: String,
+  code: Option<String>,
+}
+
+impl AppError {
+  fn msg(message: impl Into<String>) -> Self {
+    Self {
+      message: message.into(),
+      code: None,
+    }
+  }
+
+  fn coded(code: &str, message: impl Into<String>) -> Self {
+    Self {
+      message: message.into(),
+      code: Some(code.to_owned()),
+    }
+  }
 }
 
 unsafe impl Send for AppError {}
@@ -125,59 +142,52 @@ async fn create_scripts(conf_dir: &str) {
 }
 
 fn profile_from_nm_conn_name(name: &str) -> Option<String> {
-  Some(
-    name.strip_prefix(NM_CONN_PREFIX)
-      .unwrap_or(name)
-      .to_owned(),
-  )
+  name.strip_prefix(NM_CONN_PREFIX).map(str::to_owned)
+}
+
+fn is_snap_mode() -> bool {
+  std::env::var_os("IS_SNAP").is_some()
+}
+
+fn is_valid_profile_name(name: &str) -> bool {
+  !name.is_empty()
+    && name.len() <= 15
+    && name
+      .chars()
+      .all(|c| c.is_alphanumeric() || c == '_' || c == '.' || c == '=' || c == '-')
 }
 
 async fn is_nmcli_available() -> bool {
-  match Command::new("nmcli")
-    .args(["--version"])
-    .output()
-    .await
+  match timeout(
+    Duration::from_secs(2),
+    Command::new("nmcli").args(["--version"]).output(),
+  )
+  .await
   {
-    Ok(output) => output.status.success(),
-    Err(_) => false,
+    Ok(Ok(output)) => output.status.success(),
+    _ => false,
   }
 }
 
-async fn get_active_nm_profile(current_hint: Option<&str>) -> Option<String> {
-  println!(
-    "[wg-gui] get_active_nm_profile: current_hint={:?}",
-    current_hint,
-  );
-  let output = match Command::new("nmcli")
-    .args(["-t", "-f", "NAME,TYPE", "connection", "show", "--active"])
-    .output()
-    .await
+async fn get_active_nm_profile(current_hint: Option<&str>, conf_dir: &str) -> Option<String> {
+  let output = match timeout(
+    Duration::from_secs(3),
+    Command::new("nmcli")
+      .args(["-t", "-f", "NAME,TYPE", "connection", "show", "--active"])
+      .output(),
+  )
+  .await
   {
-    Ok(out) => out,
-    Err(e) => {
-      println!(
-        "[wg-gui] get_active_nm_profile: failed to execute nmcli: {}",
-        e
-      );
-      return None;
-    }
+    Ok(Ok(out)) => out,
+    Ok(Err(_)) => return None,
+    Err(_) => return None,
   };
 
   if !output.status.success() {
-    println!(
-      "[wg-gui] get_active_nm_profile: nmcli failed status={:?} stderr={}",
-      output.status.code(),
-      String::from_utf8_lossy(&output.stderr),
-    );
     return None;
   }
 
   let stdout_str = String::from_utf8_lossy(&output.stdout);
-  println!(
-    "[wg-gui] get_active_nm_profile: stdout={} stderr={}",
-    stdout_str.trim(),
-    String::from_utf8_lossy(&output.stderr).trim(),
-  );
 
   let active_wireguard_names = stdout_str
     .lines()
@@ -191,37 +201,26 @@ async fn get_active_nm_profile(current_hint: Option<&str>) -> Option<String> {
     })
     .collect::<Vec<_>>();
 
-  println!(
-    "[wg-gui] get_active_nm_profile: filtered_active_names={:?}",
-    active_wireguard_names,
-  );
-
   if let Some(current) = current_hint {
     let prefixed = format!("{NM_CONN_PREFIX}{current}");
     if active_wireguard_names.iter().any(|name| name == current || name == &prefixed) {
-      println!(
-        "[wg-gui] get_active_nm_profile: matched current_hint={} prefixed={}",
-        current,
-        prefixed,
-      );
       return Some(current.to_owned());
     }
-
-    println!(
-      "[wg-gui] get_active_nm_profile: no active match for current_hint={} prefixed={}",
-      current,
-      prefixed,
-    );
     return None;
   }
 
-  let detected = active_wireguard_names
-    .iter()
-    .find_map(|name| profile_from_nm_conn_name(name));
-  println!(
-    "[wg-gui] get_active_nm_profile: detected_without_hint={:?}",
-    detected,
-  );
+  let mut detected = None;
+  for name in &active_wireguard_names {
+    // Only auto-detect app-managed connection names.
+    let Some(candidate) = profile_from_nm_conn_name(name) else {
+      continue;
+    };
+    let profile_path = format!("{conf_dir}/profiles/{candidate}.conf");
+    if fs::try_exists(&profile_path).await.unwrap_or(false) {
+      detected = Some(candidate);
+      break;
+    }
+  }
   detected
 }
 
@@ -237,39 +236,19 @@ async fn detect_connection_state(
   current_hint: Option<String>,
   conf_dir: &str,
 ) -> (ConnSt, Option<String>) {
-  let is_snap = std::env::var_os("IS_SNAP").is_some();
+  let is_snap = is_snap_mode();
   let has_nmcli = is_nmcli_available().await;
-  println!(
-    "[wg-gui] detect_connection_state: is_snap={} has_nmcli={} current_hint={:?} conf_dir={}",
-    is_snap,
-    has_nmcli,
-    current_hint,
-    conf_dir,
-  );
   if is_snap {
     let snap_hint = match current_hint {
       Some(current) => Some(current),
       None => read_current_profile(conf_dir).await,
     };
-    println!(
-      "[wg-gui] detect_connection_state: snap_hint={:?}",
-      snap_hint,
-    );
 
-    if has_nmcli {
-      if let Some(profile) = get_active_nm_profile(snap_hint.as_deref()).await {
-        println!(
-          "[wg-gui] detect_connection_state: snap connected profile={}",
-          profile,
-        );
-        return (ConnSt::Connected, Some(profile));
-      }
-    } else {
-      println!("[wg-gui] detect_connection_state: snap mode but nmcli unavailable, checking interface state");
-      // In snap mode without nmcli, fall through to check interface state
+    if has_nmcli
+      && let Some(profile) = get_active_nm_profile(snap_hint.as_deref(), conf_dir).await {
+      return (ConnSt::Connected, Some(profile));
     }
 
-    println!("[wg-gui] detect_connection_state: snap disconnected");
     return (ConnSt::Disconnected, None);
   }
 
@@ -277,33 +256,19 @@ async fn detect_connection_state(
     Some(current) => Some(current),
     None => read_current_profile(conf_dir).await,
   };
-  println!(
-    "[wg-gui] detect_connection_state: non-snap current={:?}",
-    current,
-  );
 
   if let Some(current_name) = current.as_deref()
     && get_con_st(current_name).await == ConnSt::Connected {
-      println!(
-        "[wg-gui] detect_connection_state: interface connected current={}",
-        current_name,
-      );
       return (ConnSt::Connected, Some(current_name.to_owned()));
   }
 
   // Fallback: check NM for active WireGuard connections (handles both
   // wg-gui-<name> prefixed and exact-name connections) - only if available
-  if has_nmcli {
-    if let Some(profile) = get_active_nm_profile(current.as_deref()).await {
-      println!(
-        "[wg-gui] detect_connection_state: NM fallback connected profile={}",
-        profile,
-      );
-      return (ConnSt::Connected, Some(profile));
-    }
+  if has_nmcli
+    && let Some(profile) = get_active_nm_profile(current.as_deref(), conf_dir).await {
+    return (ConnSt::Connected, Some(profile));
   }
 
-  println!("[wg-gui] detect_connection_state: disconnected");
   (ConnSt::Disconnected, None)
 }
 
@@ -319,13 +284,6 @@ async fn sync_connection_state(
     )
   };
   let (prev_conn_st, prev_current, prev_pub_ip) = previous;
-  println!(
-    "[wg-gui] sync_connection_state: previous conn_st={:?} current={:?} pub_ip={:?}",
-    prev_conn_st,
-    prev_current,
-    prev_pub_ip,
-  );
-
   let (next_conn_st, next_current) = detect_connection_state(prev_current.clone(), &conf_dir).await;
   let state_changed = next_conn_st != prev_conn_st || next_current != prev_current;
   let next_pub_ip = if next_conn_st == ConnSt::Connected {
@@ -339,16 +297,7 @@ async fn sync_connection_state(
   } else {
     prev_pub_ip.clone()
   };
-  println!(
-    "[wg-gui] sync_connection_state: next conn_st={:?} current={:?} pub_ip={:?} state_changed={}",
-    next_conn_st,
-    next_current,
-    next_pub_ip,
-    state_changed,
-  );
-
   if !state_changed && next_pub_ip == prev_pub_ip {
-    println!("[wg-gui] sync_connection_state: no update needed");
     return Ok(());
   }
 
@@ -359,8 +308,10 @@ async fn sync_connection_state(
     s.pub_ip = next_pub_ip;
   }
 
-  if let Some(current) = next_current {
-    let _ = fs::write(format!("{conf_dir}/current"), current.trim()).await;
+  if next_conn_st == ConnSt::Connected {
+    if let Some(current) = next_current {
+      let _ = fs::write(format!("{conf_dir}/current"), current.trim()).await;
+    }
   } else {
     let _ = fs::remove_file(format!("{conf_dir}/current")).await;
   }
@@ -371,20 +322,10 @@ async fn sync_connection_state(
     } else {
       TRAY_DISCONNECTED_ICON
     };
-    println!(
-      "[wg-gui] sync_connection_state: updating tray icon for conn_st={:?}",
-      next_conn_st,
-    );
     let _ = tray.set_icon(Some(Image::from_bytes(icon).unwrap()));
   }
 
   let payload = app_state.0.lock().await.clone();
-  println!(
-    "[wg-gui] sync_connection_state: emitting payload conn_st={:?} current={:?} pub_ip={:?}",
-    payload.conn_st,
-    payload.current,
-    payload.pub_ip,
-  );
   let _ = app.emit(APP_STATE_CHANGED_EVENT, payload);
   Ok(())
 }
@@ -395,13 +336,6 @@ async fn get_con_st(current: &str) -> ConnSt {
     .output()
     .await
     .expect("ip command failed");
-  println!(
-    "[wg-gui] get_con_st: current={} status={:?} stdout={} stderr={}",
-    current,
-    output.status.code(),
-    String::from_utf8_lossy(&output.stdout).trim(),
-    String::from_utf8_lossy(&output.stderr).trim(),
-  );
   // check status code
   if output.status.success() {
     return ConnSt::Connected;
@@ -430,24 +364,26 @@ async fn exec_wg(app_state: &AppSt, profile: &str) -> Result<(), AppError> {
   let conf_dir = app_state.0.lock().await.conf_dir.clone();
   let mut envs = HashMap::new();
   envs.insert("PROFILE".to_owned(), profile);
-  
-  let is_snap = std::env::var_os("IS_SNAP").is_some();
+
+  let is_snap = is_snap_mode();
   if is_snap {
     envs.insert("IS_SNAP".to_owned(), "true");
     println!("[wg-gui] exec_wg: running in snap environment for profile {}", profile);
   } else {
     println!("[wg-gui] exec_wg: running in native environment for profile {}", profile);
   }
-  
+
   println!("[wg-gui] exec_wg: executing wg.sh for profile {}", profile);
-  let res = Command::new("bash")
-    .args([format!("{conf_dir}/wg.sh")])
-    .envs(envs)
-    .output()
-    .await
-    .map_err(|e| AppError {
-      message: format!("Failed to execute wg.sh: {}", e),
-    })?;
+  let res = timeout(
+    Duration::from_secs(20),
+    Command::new("bash")
+      .args([format!("{conf_dir}/wg.sh")])
+      .envs(envs)
+      .output(),
+  )
+  .await
+  .map_err(|_| AppError::coded("timeout", "wg operation timed out"))?
+  .map_err(|e| AppError::coded("script_exec_failed", format!("Failed to execute wg.sh: {}", e)))?;
 
   println!(
     "[wg-gui] exec_wg: wg.sh exit code: {:?}",
@@ -463,14 +399,32 @@ async fn exec_wg(app_state: &AppSt, profile: &str) -> Result<(), AppError> {
   );
 
   if res.status.code().unwrap_or_default() != 0 {
-    let error_msg = String::from_utf8(res.stderr).unwrap_or_default();
-    return Err(AppError {
-      message: if error_msg.is_empty() {
-        format!("wg.sh failed with exit code {}", res.status.code().unwrap_or(-1))
-      } else {
-        error_msg
-      },
-    });
+    let error_msg = String::from_utf8(res.stderr).unwrap_or_default().trim().to_owned();
+    let exit_code = res.status.code().unwrap_or(-1);
+    let lower = error_msg.to_ascii_lowercase();
+
+    let coded_error = if exit_code == 127 || lower.contains("nmcli") && lower.contains("required") {
+      AppError::coded("nmcli_missing", if error_msg.is_empty() { "nmcli is required but unavailable" } else { error_msg.as_str() })
+    } else if exit_code == 124 {
+      AppError::coded("timeout", if error_msg.is_empty() { "wg operation timed out" } else { error_msg.as_str() })
+    } else if lower.contains("permission denied") || lower.contains("not authorized") {
+      AppError::coded("permission_denied", if error_msg.is_empty() { "Permission denied while managing network connection" } else { error_msg.as_str() })
+    } else if lower.contains("failed to import") {
+      AppError::coded("import_failed", if error_msg.is_empty() { "Failed to import WireGuard profile" } else { error_msg.as_str() })
+    } else if lower.contains("failed to bring up") || lower.contains("activation") {
+      AppError::coded("activation_failed", if error_msg.is_empty() { "Failed to activate WireGuard connection" } else { error_msg.as_str() })
+    } else {
+      AppError::coded(
+        "script_failed",
+        if error_msg.is_empty() {
+          format!("wg.sh failed with exit code {}", exit_code)
+        } else {
+          error_msg
+        },
+      )
+    };
+
+    return Err(coded_error);
   }
 
   println!("[wg-gui] exec_wg: successfully executed wg.sh for profile {}", profile);
@@ -480,13 +434,9 @@ async fn exec_wg(app_state: &AppSt, profile: &str) -> Result<(), AppError> {
 async fn get_pub_ip() -> Result<String, AppError> {
   let payload = reqwest::get("https://httpbin.org/ip")
     .await
-    .map_err(|err| AppError {
-      message: err.to_string(),
-    })?
+    .map_err(|err| AppError::msg(err.to_string()))?
     .json::<IpPayload>()
-    .await.map_err(|err| AppError {
-      message: err.to_string(),
-    })?;
+    .await.map_err(|err| AppError::msg(err.to_string()))?;
   Ok(payload.origin)
 }
 
@@ -503,23 +453,21 @@ async fn create_profile(
   new_profile: ProfilePartial,
 ) -> Result<(), AppError> {
   let s = app_state.0.lock().await.clone();
-  // allow only alphanumerac
+  // Accept Linux interface-compatible profile names.
   let name = new_profile.name;
-  // allow alphanumeric and - and _
-  if !name
-    .chars()
-    .all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
-      return Err(AppError {
-        message: "Name must only containt alphanumeric values, - or _".to_owned(),
-      });
+  if !is_valid_profile_name(&name) {
+      return Err(AppError::coded(
+        "invalid_profile_name",
+        "Name must be 1-15 chars and contain only alphanumeric values, _, -, ., or =",
+      ));
   }
   let path = format!("{}/profiles/{name}.conf", s.conf_dir);
   if fs::try_exists(&path).await.unwrap() {
-    return Err(AppError {
-      message: "Profile already exist".into(),
-    });
+    return Err(AppError::coded("profile_exists", "Profile already exists"));
   }
-  fs::write(path, new_profile.content).await.unwrap();
+  fs::write(path, new_profile.content)
+    .await
+    .map_err(|e| AppError::coded("profile_write_failed", format!("Failed to write profile: {}", e)))?;
   Ok(())
 }
 
@@ -557,7 +505,7 @@ async fn connect_profile(
   exec_wg(&app_state, &profile).await?;
   tokio::fs::write(format!("{conf_dir}/current"), &profile.trim())
     .await
-    .unwrap();
+    .map_err(|e| AppError::coded("state_write_failed", format!("Failed to persist current profile: {}", e)))?;
   // Sleep for 1 second to let time for network to stabilize
   tokio::time::sleep(Duration::from_secs(1)).await;
   sync_connection_state(&app, &app_state).await?;
@@ -591,11 +539,9 @@ async fn update_profile(
   let s = app_state.0.lock().await.clone();
   let path = format!("{}/profiles/{profile_name}.conf", s.conf_dir);
   if !fs::try_exists(&path).await.unwrap() {
-    return Err(AppError {
-      message: "Profile does not exist".into(),
-    });
+    return Err(AppError::coded("profile_not_found", "Profile does not exist"));
   }
-  
+
   let mut is_current = false;
   if let Some(current) = s.current.as_ref()
     && profile_name == *current {
@@ -611,12 +557,12 @@ async fn update_profile(
       }
       is_current = true;
     }
-  
+
   // Write the new profile content
   println!("[wg-gui] update_profile: writing new profile content to {}", path);
-  fs::write(&path, profile.content).await.map_err(|e| AppError {
-    message: format!("Failed to write profile: {}", e),
-  })?;
+  fs::write(&path, profile.content)
+    .await
+    .map_err(|e| AppError::coded("profile_write_failed", format!("Failed to write profile: {}", e)))?;
 
   if !is_current {
     println!("[wg-gui] update_profile: profile is not active, no reconnection needed");
@@ -626,14 +572,14 @@ async fn update_profile(
   // Reconnect with the updated profile
   println!("[wg-gui] update_profile: reconnecting with updated profile {}", profile_name);
   exec_wg(&app_state, &profile_name).await?;
-  
+
   // Wait for network to stabilize
   tokio::time::sleep(Duration::from_secs(1)).await;
-  
+
   // Sync state
   println!("[wg-gui] update_profile: syncing connection state");
   sync_connection_state(&app, &app_state).await?;
-  
+
   println!("[wg-gui] update_profile: successfully updated and reconnected {}", profile_name);
   Ok(())
 }
@@ -714,20 +660,30 @@ async fn import_profiles(
 
     // Extract and sanitize profile name
     let base_name = file_name.replace(".conf", "");
-    let sanitized_name: String = base_name
+    let mut sanitized_name: String = base_name
       .chars()
-      .filter(|c| c.is_alphanumeric())
+      .map(|c| {
+        if c.is_alphanumeric() || c == '_' || c == '.' || c == '=' || c == '-' {
+          c
+        } else {
+          '_'
+        }
+      })
       .collect();
+
+    if sanitized_name.len() > 15 {
+      sanitized_name.truncate(15);
+    }
 
     if sanitized_name.is_empty() {
       failed.push(ImportError {
         file_name: file_name.to_string(),
-        error: "Profile name must contain at least one alphanumeric character".to_string(),
+        error: "Profile name must contain valid interface characters".to_string(),
       });
       continue;
     }
 
-    // Handle duplicate names by appending a number
+    // Handle duplicate names by appending a number while respecting 15-char limit.
     let mut final_name = sanitized_name.clone();
     let mut counter = 1;
     loop {
@@ -735,8 +691,23 @@ async fn import_profiles(
       if !fs::try_exists(&target_path).await.unwrap_or(false) {
         break;
       }
-      final_name = format!("{}_{}", sanitized_name, counter);
+      let suffix = format!("_{}", counter);
+      let keep_len = 15usize.saturating_sub(suffix.len());
+      if keep_len == 0 {
+        failed.push(ImportError {
+          file_name: file_name.to_string(),
+          error: "Could not create a unique profile name within 15 characters".to_string(),
+        });
+        final_name.clear();
+        break;
+      }
+      let base_prefix: String = sanitized_name.chars().take(keep_len).collect();
+      final_name = format!("{}{}", base_prefix, suffix);
       counter += 1;
+    }
+
+    if final_name.is_empty() || !is_valid_profile_name(&final_name) {
+      continue;
     }
 
     // Write the profile
@@ -770,9 +741,10 @@ async fn export_profiles(
   let mut dirs = match fs::read_dir(&profiles_dir).await {
     Ok(d) => d,
     Err(e) => {
-      return Err(AppError {
-        message: format!("Failed to read profiles directory: {}", e),
-      });
+      return Err(AppError::coded(
+        "profile_dir_read_failed",
+        format!("Failed to read profiles directory: {}", e),
+      ));
     }
   };
 

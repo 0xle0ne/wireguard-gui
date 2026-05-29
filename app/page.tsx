@@ -4,8 +4,15 @@ import { Suspense, useCallback, useEffect, useState } from 'react';
 import Image from 'next/image';
 import { getVersion } from '@tauri-apps/api/app';
 import { Lock, PowerOff, Unlock } from 'lucide-react';
+import { toast } from 'sonner';
 
-import { connect, disconnect, useAppLoader, useAppState } from '@/lib/effects';
+import {
+  CommandError,
+  connect,
+  disconnect,
+  useAppLoader,
+  useAppState,
+} from '@/lib/effects';
 import { Button } from '@/components/ui/button';
 import { AppLoader } from '@/components/app-loader';
 import { ProfileTable } from '@/components/profile-table';
@@ -37,8 +44,29 @@ export default function Index() {
     };
   }, [fetchState, setAppLoader]);
 
-  const onError = useCallback((err: any) => {
-    alert(err?.message || 'Unknown error');
+  const onError = useCallback((commandError: CommandError) => {
+    const byCode: Record<string, string> = {
+      activation_failed:
+        'Failed to activate connection. Check your profile and NetworkManager logs.',
+      import_failed:
+        'Profile import failed. Verify the WireGuard config content.',
+      invalid_profile_name:
+        'Invalid profile name. Use 1-15 characters: alphanumeric, _, -, ., =',
+      nmcli_missing: 'NetworkManager CLI is missing. Snap mode requires nmcli.',
+      permission_denied:
+        'Permission denied. Check polkit/network-manager permissions.',
+      profile_exists: 'A profile with this name already exists.',
+      profile_not_found: 'Profile no longer exists on disk.',
+      script_failed: 'Connection script failed. Check logs for details.',
+      timeout: 'Network operation timed out. Please retry.',
+    };
+
+    const description =
+      (commandError.code ? byCode[commandError.code] : undefined) ||
+      commandError.message ||
+      'Unknown error';
+
+    toast.error('Connection error', { description });
   }, []);
 
   const onConnect = useCallback(

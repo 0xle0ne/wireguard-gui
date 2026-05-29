@@ -3,8 +3,37 @@ import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
 import type { AppState } from '@/types/app';
-import type { Profile, ProfilePartial, ImportResult, ExportResult } from '@/types/profile';
+import type {
+  Profile,
+  ProfilePartial,
+  ImportResult,
+  ExportResult,
+} from '@/types/profile';
 import { AppLoaderProps } from '@/components/app-loader';
+
+export interface CommandError {
+  message: string;
+  code?: string;
+}
+
+export function normalizeInvokeError(error: unknown): CommandError {
+  if (typeof error === 'string') {
+    return { message: error };
+  }
+
+  if (error && typeof error === 'object') {
+    const maybeErr = error as { message?: unknown; code?: unknown };
+    return {
+      message:
+        typeof maybeErr.message === 'string'
+          ? maybeErr.message
+          : 'Unknown error',
+      code: typeof maybeErr.code === 'string' ? maybeErr.code : undefined,
+    };
+  }
+
+  return { message: 'Unknown error' };
+}
 
 export function useInvoke<T, I>(initialValue: I, cmd: string, args?: any) {
   const [data, setData] = React.useState<T | I>(initialValue);
@@ -36,6 +65,10 @@ export function useAppState() {
         }
       })
       .then((dispose: () => void) => {
+        if (disposed) {
+          dispose();
+          return;
+        }
         unlisten = dispose;
       })
       .catch(() => undefined);
@@ -75,22 +108,22 @@ export function useProfiles() {
 
 export function disconnect(
   onfinally?: () => void,
-  onerror?: (err: any) => void,
+  onerror?: (err: CommandError) => void,
 ) {
   require('@tauri-apps/api/core')
     .invoke('disconnect')
-    .catch(onerror)
+    .catch((err: unknown) => onerror?.(normalizeInvokeError(err)))
     .finally(onfinally);
 }
 
 export function connect(
   profile: string,
   onfinally?: () => void,
-  onerror?: (err: any) => void,
+  onerror?: (err: CommandError) => void,
 ) {
   require('@tauri-apps/api/core')
     .invoke('connect_profile', { profile })
-    .catch(onerror)
+    .catch((err: unknown) => onerror?.(normalizeInvokeError(err)))
     .finally(onfinally);
 }
 
