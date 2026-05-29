@@ -7,7 +7,13 @@ import { DeleteIcon, Edit, Rocket, Upload, Download } from 'lucide-react';
 import { toast } from 'sonner';
 
 import type { Profile, ImportResult, ExportResult } from '@/types/profile';
-import { useDebounce, useProfiles, importProfiles, exportProfiles } from '@/lib/effects';
+import {
+  exportProfiles,
+  importProfiles,
+  normalizeInvokeError,
+  useDebounce,
+  useProfiles,
+} from '@/lib/effects';
 
 import { ProfileDialogDelete } from './profile-dialog-delete';
 import { ProfileDialogForm } from './profile-dialog-form';
@@ -196,31 +202,40 @@ export function ProfileTable({ current, onConnect }: ProfileTableProps) {
           const failCount = result.failed.length;
 
           if (successCount > 0 && failCount === 0) {
-            const profileNames = result.success.length <= 3
-              ? `: ${result.success.join(', ')}`
-              : '';
-            toast.success(`Successfully imported ${successCount} profile(s)${profileNames}`);
+            const profileNames =
+              result.success.length <= 3
+                ? `: ${result.success.join(', ')}`
+                : '';
+            toast.success(
+              `Successfully imported ${successCount} profile(s)${profileNames}`,
+            );
           } else if (successCount > 0 && failCount > 0) {
             toast.warning(
               `Imported ${successCount} profile(s), ${failCount} failed`,
               {
-                description: result.failed.map(err => `${err.file_name}: ${err.error}`).join('\n')
-              }
+                description: result.failed
+                  .map((err) => `${err.file_name}: ${err.error}`)
+                  .join('\n'),
+              },
             );
           } else {
             toast.error('Import failed', {
-              description: result.failed.map(err => `${err.file_name}: ${err.error}`).join('\n')
+              description: result.failed
+                .map((err) => `${err.file_name}: ${err.error}`)
+                .join('\n'),
             });
           }
         },
         (error) => {
+          const normalized = normalizeInvokeError(error);
           toast.error('Import failed', {
-            description: String(error)
+            description: normalized.message,
           });
         },
       );
     } catch (error) {
-      toast.error('Import error', { description: String(error) });
+      const normalized = normalizeInvokeError(error);
+      toast.error('Import error', { description: normalized.message });
     }
   }, [fetchData]);
 
@@ -243,31 +258,40 @@ export function ProfileTable({ current, onConnect }: ProfileTableProps) {
           const failCount = result.failed.length;
 
           if (successCount > 0 && failCount === 0) {
-            const profileNames = result.success.length <= 3
-              ? `: ${result.success.join(', ')}`
-              : '';
-            toast.success(`Successfully exported ${successCount} profile(s)${profileNames}`);
+            const profileNames =
+              result.success.length <= 3
+                ? `: ${result.success.join(', ')}`
+                : '';
+            toast.success(
+              `Successfully exported ${successCount} profile(s)${profileNames}`,
+            );
           } else if (successCount > 0 && failCount > 0) {
             toast.warning(
               `Exported ${successCount} profile(s), ${failCount} failed`,
               {
-                description: result.failed.map(err => `${err.profile_name}: ${err.error}`).join('\n')
-              }
+                description: result.failed
+                  .map((err) => `${err.profile_name}: ${err.error}`)
+                  .join('\n'),
+              },
             );
           } else {
             toast.error('Export failed', {
-              description: result.failed.map(err => `${err.profile_name}: ${err.error}`).join('\n')
+              description: result.failed
+                .map((err) => `${err.profile_name}: ${err.error}`)
+                .join('\n'),
             });
           }
         },
         (error) => {
+          const normalized = normalizeInvokeError(error);
           toast.error('Export failed', {
-            description: String(error)
+            description: normalized.message,
           });
         },
       );
     } catch (error) {
-      toast.error('Import error', { description: String(error) });
+      const normalized = normalizeInvokeError(error);
+      toast.error('Import error', { description: normalized.message });
     }
   }, []);
 

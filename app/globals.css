@@ -161,6 +161,14 @@
   }
 }
 
+button:not(:disabled) {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
 /* total width */
 ::-webkit-scrollbar {
   width: 6px;
