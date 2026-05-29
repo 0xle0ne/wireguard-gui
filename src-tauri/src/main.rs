@@ -132,16 +132,37 @@ fn profile_from_nm_conn_name(name: &str) -> Option<String> {
   )
 }
 
+async fn is_nmcli_available() -> bool {
+  match Command::new("nmcli")
+    .args(["--version"])
+    .output()
+    .await
+  {
+    Ok(output) => output.status.success(),
+    Err(_) => false,
+  }
+}
+
 async fn get_active_nm_profile(current_hint: Option<&str>) -> Option<String> {
   println!(
     "[wg-gui] get_active_nm_profile: current_hint={:?}",
     current_hint,
   );
-  let output = Command::new("nmcli")
+  let output = match Command::new("nmcli")
     .args(["-t", "-f", "NAME,TYPE", "connection", "show", "--active"])
     .output()
     .await
-    .ok()?;
+  {
+    Ok(out) => out,
+    Err(e) => {
+      println!(
+        "[wg-gui] get_active_nm_profile: failed to execute nmcli: {}",
+        e
+      );
+      return None;
+    }
+  };
+
   if !output.status.success() {
     println!(
       "[wg-gui] get_active_nm_profile: nmcli failed status={:?} stderr={}",
@@ -150,13 +171,15 @@ async fn get_active_nm_profile(current_hint: Option<&str>) -> Option<String> {
     );
     return None;
   }
+
+  let stdout_str = String::from_utf8_lossy(&output.stdout);
   println!(
     "[wg-gui] get_active_nm_profile: stdout={} stderr={}",
-    String::from_utf8_lossy(&output.stdout).trim(),
+    stdout_str.trim(),
     String::from_utf8_lossy(&output.stderr).trim(),
   );
-  let active_wireguard_names = String::from_utf8(output.stdout)
-    .ok()?
+
+  let active_wireguard_names = stdout_str
     .lines()
     .filter_map(|line| {
       let (name, conn_type) = line.rsplit_once(':')?;
@@ -167,6 +190,7 @@ async fn get_active_nm_profile(current_hint: Option<&str>) -> Option<String> {
       Some(name.to_owned())
     })
     .collect::<Vec<_>>();
+
   println!(
     "[wg-gui] get_active_nm_profile: filtered_active_names={:?}",
     active_wireguard_names,
@@ -213,13 +237,16 @@ async fn detect_connection_state(
   current_hint: Option<String>,
   conf_dir: &str,
 ) -> (ConnSt, Option<String>) {
+  let is_snap = std::env::var_os("IS_SNAP").is_some();
+  let has_nmcli = is_nmcli_available().await;
   println!(
-    "[wg-gui] detect_connection_state: is_snap={} current_hint={:?} conf_dir={}",
-    std::env::var_os("IS_SNAP").is_some(),
+    "[wg-gui] detect_connection_state: is_snap={} has_nmcli={} current_hint={:?} conf_dir={}",
+    is_snap,
+    has_nmcli,
     current_hint,
     conf_dir,
   );
-  if std::env::var_os("IS_SNAP").is_some() {
+  if is_snap {
     let snap_hint = match current_hint {
       Some(current) => Some(current),
       None => read_current_profile(conf_dir).await,
@@ -229,12 +256,17 @@ async fn detect_connection_state(
       snap_hint,
     );
 
-    if let Some(profile) = get_active_nm_profile(snap_hint.as_deref()).await {
-      println!(
-        "[wg-gui] detect_connection_state: snap connected profile={}",
-        profile,
-      );
-      return (ConnSt::Connected, Some(profile));
+    if has_nmcli {
+      if let Some(profile) = get_active_nm_profile(snap_hint.as_deref()).await {
+        println!(
+          "[wg-gui] detect_connection_state: snap connected profile={}",
+          profile,
+        );
+        return (ConnSt::Connected, Some(profile));
+      }
+    } else {
+      println!("[wg-gui] detect_connection_state: snap mode but nmcli unavailable, checking interface state");
+      // In snap mode without nmcli, fall through to check interface state
     }
 
     println!("[wg-gui] detect_connection_state: snap disconnected");
@@ -260,13 +292,15 @@ async fn detect_connection_state(
   }
 
   // Fallback: check NM for active WireGuard connections (handles both
-  // wg-gui-<name> prefixed and exact-name connections)
-  if let Some(profile) = get_active_nm_profile(current.as_deref()).await {
-    println!(
-      "[wg-gui] detect_connection_state: NM fallback connected profile={}",
-      profile,
-    );
-    return (ConnSt::Connected, Some(profile));
+  // wg-gui-<name> prefixed and exact-name connections) - only if available
+  if has_nmcli {
+    if let Some(profile) = get_active_nm_profile(current.as_deref()).await {
+      println!(
+        "[wg-gui] detect_connection_state: NM fallback connected profile={}",
+        profile,
+      );
+      return (ConnSt::Connected, Some(profile));
+    }
   }
 
   println!("[wg-gui] detect_connection_state: disconnected");
@@ -396,21 +430,50 @@ async fn exec_wg(app_state: &AppSt, profile: &str) -> Result<(), AppError> {
   let conf_dir = app_state.0.lock().await.conf_dir.clone();
   let mut envs = HashMap::new();
   envs.insert("PROFILE".to_owned(), profile);
-  if std::env::var_os("IS_SNAP").is_some() {
+  
+  let is_snap = std::env::var_os("IS_SNAP").is_some();
+  if is_snap {
     envs.insert("IS_SNAP".to_owned(), "true");
-    println!("Running in snap environment, setting IS_SNAP env variable for wg.sh");
+    println!("[wg-gui] exec_wg: running in snap environment for profile {}", profile);
+  } else {
+    println!("[wg-gui] exec_wg: running in native environment for profile {}", profile);
   }
+  
+  println!("[wg-gui] exec_wg: executing wg.sh for profile {}", profile);
   let res = Command::new("bash")
     .args([format!("{conf_dir}/wg.sh")])
     .envs(envs)
     .output()
     .await
-    .expect("failed to execute process");
+    .map_err(|e| AppError {
+      message: format!("Failed to execute wg.sh: {}", e),
+    })?;
+
+  println!(
+    "[wg-gui] exec_wg: wg.sh exit code: {:?}",
+    res.status.code()
+  );
+  println!(
+    "[wg-gui] exec_wg: wg.sh stdout: {}",
+    String::from_utf8_lossy(&res.stdout)
+  );
+  println!(
+    "[wg-gui] exec_wg: wg.sh stderr: {}",
+    String::from_utf8_lossy(&res.stderr)
+  );
+
   if res.status.code().unwrap_or_default() != 0 {
+    let error_msg = String::from_utf8(res.stderr).unwrap_or_default();
     return Err(AppError {
-      message: String::from_utf8(res.stderr).unwrap_or_default(),
+      message: if error_msg.is_empty() {
+        format!("wg.sh failed with exit code {}", res.status.code().unwrap_or(-1))
+      } else {
+        error_msg
+      },
     });
   }
+
+  println!("[wg-gui] exec_wg: successfully executed wg.sh for profile {}", profile);
   Ok(())
 }
 
@@ -529,22 +592,49 @@ async fn update_profile(
   let path = format!("{}/profiles/{profile_name}.conf", s.conf_dir);
   if !fs::try_exists(&path).await.unwrap() {
     return Err(AppError {
-      message: "Profile does not exists".into(),
+      message: "Profile does not exist".into(),
     });
   }
+  
   let mut is_current = false;
-  if let Some(current) = s.current
-    && profile_name == current {
-      exec_wg(&app_state, &profile_name).await?;
+  if let Some(current) = s.current.as_ref()
+    && profile_name == *current {
+      println!(
+        "[wg-gui] update_profile: profile {} is currently active, will reconnect after update",
+        profile_name
+      );
+      // Disconnect the active profile
+      println!("[wg-gui] update_profile: disconnecting {}", profile_name);
+      if let Err(e) = exec_wg(&app_state, &profile_name).await {
+        println!("[wg-gui] update_profile: error disconnecting: {}", e.message);
+        return Err(e);
+      }
       is_current = true;
     }
-  fs::write(path, profile.content).await.unwrap();
+  
+  // Write the new profile content
+  println!("[wg-gui] update_profile: writing new profile content to {}", path);
+  fs::write(&path, profile.content).await.map_err(|e| AppError {
+    message: format!("Failed to write profile: {}", e),
+  })?;
+
   if !is_current {
+    println!("[wg-gui] update_profile: profile is not active, no reconnection needed");
     return Ok(());
   }
+
+  // Reconnect with the updated profile
+  println!("[wg-gui] update_profile: reconnecting with updated profile {}", profile_name);
   exec_wg(&app_state, &profile_name).await?;
+  
+  // Wait for network to stabilize
   tokio::time::sleep(Duration::from_secs(1)).await;
+  
+  // Sync state
+  println!("[wg-gui] update_profile: syncing connection state");
   sync_connection_state(&app, &app_state).await?;
+  
+  println!("[wg-gui] update_profile: successfully updated and reconnected {}", profile_name);
   Ok(())
 }
 

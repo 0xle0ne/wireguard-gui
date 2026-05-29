@@ -26,62 +26,120 @@ if [[ ! -f "$user_conf" ]]; then
   exit 1
 fi
 
-if [[ "$is_snap" == "true" ]]; then
-  # Snap mode: use NetworkManager, not raw ip/wg netlink operations.
-  if ! command -v nmcli >/dev/null 2>&1; then
-    echo "nmcli not found in snap runtime" >&2
-    exit 1
-  fi
+# Check if nmcli is available
+has_nmcli() {
+  command -v nmcli >/dev/null 2>&1 && nmcli --version >/dev/null 2>&1
+}
 
+# Use nmcli if available (works in both snap and native environments)
+if has_nmcli; then
+  echo "NetworkManager detected, using nmcli for connection management"
+  
   conn_name="wg-gui-${profile}"
 
-  if nmcli -t -f NAME connection show --active | grep -Fxq "$conn_name"; then
-    nmcli connection down "$conn_name"
-    echo "Connection $conn_name brought down (SNAP mode)"
+  # Check if connection is active and disconnect it
+  if nmcli -t -f NAME connection show --active 2>/dev/null | grep -Fxq "$conn_name"; then
+    echo "Disconnecting $conn_name..."
+    nmcli connection down "$conn_name" 2>&1 || {
+      echo "Warning: Failed to disconnect $conn_name" >&2
+    }
+    echo "Connection $conn_name brought down"
     exit 0
   fi
 
-  if ! nmcli -t -f NAME connection show | grep -Fxq "$conn_name"; then
-    import_output="$(nmcli connection import type wireguard file "$user_conf" 2>&1)" || {
-      echo "$import_output" >&2
-      exit 1
+  # Clean up any old connections with the same name (handles renames/updates)
+  if nmcli -t -f NAME connection show 2>/dev/null | grep -Fxq "$conn_name"; then
+    echo "Removing old connection $conn_name..."
+    nmcli connection delete "$conn_name" 2>&1 || {
+      echo "Warning: Failed to delete old connection $conn_name" >&2
     }
+  fi
 
-    imported_name="$(printf '%s\n' "$import_output" | sed -n "s/.*Connection '\([^']\+\)'.*/\1/p" | tail -n 1)"
-    if [[ -n "$imported_name" && "$imported_name" != "$conn_name" ]]; then
-      nmcli connection modify "$imported_name" connection.id "$conn_name"
-    elif [[ -z "$imported_name" ]]; then
-      if nmcli -t -f NAME connection show | grep -Fxq "$profile"; then
-        nmcli connection modify "$profile" connection.id "$conn_name"
-      fi
+  # Also clean up connection with the profile name
+  if nmcli -t -f NAME connection show 2>/dev/null | grep -Fxq "$profile"; then
+    echo "Removing old connection $profile..."
+    nmcli connection delete "$profile" 2>&1 || {
+      echo "Warning: Failed to delete old connection $profile" >&2
+    }
+  fi
+
+  # Import the connection
+  echo "Importing connection from $user_conf..."
+  import_output=""
+  if ! import_output=$(nmcli connection import type wireguard file "$user_conf" 2>&1); then
+    echo "Failed to import connection: $import_output" >&2
+    exit 1
+  fi
+
+  # Extract the imported connection name
+  imported_name=$(printf '%s\n' "$import_output" | sed -n "s/.*Connection '\([^']*\)'.*/\1/p" | head -n 1)
+  
+  if [[ -z "$imported_name" ]]; then
+    echo "Failed to extract imported connection name from: $import_output" >&2
+    exit 1
+  fi
+
+  # Rename to our standard naming convention if needed
+  if [[ "$imported_name" != "$conn_name" ]]; then
+    echo "Renaming connection from $imported_name to $conn_name..."
+    if ! nmcli connection modify "$imported_name" connection.id "$conn_name" 2>&1; then
+      echo "Warning: Failed to rename connection" >&2
     fi
   fi
 
-  nmcli connection up "$conn_name"
-  echo "Connection $conn_name brought up (SNAP mode)"
+  # Bring up the connection
+  echo "Bringing up connection $conn_name..."
+  if ! nmcli connection up "$conn_name" 2>&1; then
+    echo "Failed to bring up connection $conn_name" >&2
+    exit 1
+  fi
+  echo "Connection $conn_name brought up successfully"
   exit 0
 fi
 
-# Normal mode: keep existing pkexec + wg-quick behavior.
+# Normal mode: use pkexec + wg-quick behavior (default fallback)
+echo "Using wg-quick mode (not running in snap or nmcli unavailable)"
+
+# Create a temporary script to run as root
 tmp_script="$(mktemp)"
-cat <<EOF > "$tmp_script"
+trap "rm -f '$tmp_script'" EXIT
+
+cat <<'EOF' > "$tmp_script"
 #!/bin/bash
 set -euo pipefail
 
+profile="${1:-}"
+user_conf="${2:-}"
+profile_path="${3:-}"
+
+if [[ -z "$profile" || -z "$user_conf" || -z "$profile_path" ]]; then
+  echo "Error: Invalid parameters" >&2
+  exit 1
+fi
+
+# Copy profile to system wireguard directory
 cp -f "$user_conf" "$profile_path"
 
+# Toggle the connection
 if ip link show dev "$profile" >/dev/null 2>&1; then
+  # Interface exists, bring it down
+  echo "Bringing down interface $profile..."
   wg-quick down "$profile"
 else
+  # Interface doesn't exist, bring it up
+  echo "Bringing up interface $profile..."
   wg-quick up "$profile"
 fi
 EOF
 
 chmod +x "$tmp_script"
-pkexec "$tmp_script"
-status=$?
 
-echo "Return code: $status"
+# Run as root using pkexec with proper error handling
+if ! pkexec "$tmp_script" "$profile" "$user_conf" "$profile_path"; then
+  status=$?
+  echo "wg-quick failed with status $status" >&2
+  exit "$status"
+fi
 
-rm -f "$tmp_script"
-exit "$status"
+echo "wg-quick completed successfully"
+exit 0
