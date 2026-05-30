@@ -65,6 +65,7 @@ sudo apt-get install javascriptcoregtk-4.1 libsoup-3.0 webkit2gtk-4.1 libayatana
 ## Installation
 
 #### Install from [Releases](https://github.com/0xle0ne/wireguard-gui/releases/latest):
+
 Release are currently available as .deb package for Debian/Ubuntu or Appimage for others distro.
 
 #### Install from [AUR](https://aur.archlinux.org/packages/wireguard-gui-bin):
@@ -112,7 +113,6 @@ To learn more about Tauri and Next.js, take a look at the following resources:
 - [Tauri API](https://tauri.app/v1/api/js) - discover javascript Tauri api.
 - [Next.js Documentation](https://nextjs.org/docs) - learn more about Next.js.
 - [Next.js Tutorial](https://nextjs.org/learn) - interactive Next.js tutorial.
-
 
 ## Troubleshooting
 
