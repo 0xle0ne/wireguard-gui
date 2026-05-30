@@ -16,25 +16,25 @@ jobs:
         uses: actions/checkout@v3
 
       # Cache Rust
-      - uses: actions/cache@v3
+      - uses: actions/cache@v5
         with:
           path: ./src-tauri/target
           key: ubuntu-latest-${{ hashFiles('./src-tauri/Cargo.lock') }}
 
       # Cache Rust
-      - uses: actions/cache@v3
+      - uses: actions/cache@v5
         with:
           path: ~/.cargo
           key: ubuntu-latest-${{ hashFiles('./src-tauri/Cargo.lock') }}
 
       # Cache Node
-      - uses: actions/cache@v3
+      - uses: actions/cache@v5
         with:
           path: ./node_modules
           key: ubuntu-latest-${{ hashFiles('./package-lock.json') }}
 
       # Cache Next.js
-      - uses: actions/cache@v3
+      - uses: actions/cache@v5
         with:
           path: ./.next
           key: ubuntu-latest
