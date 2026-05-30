@@ -13,6 +13,7 @@ use serde::{Serialize, Deserialize};
 use tauri::{
   image::Image, menu::{Menu, MenuItem}, tray::{TrayIcon, TrayIconBuilder}, App, AppHandle, Emitter, Manager, State
 };
+use tauri_plugin_window_state::{AppHandleExt, StateFlags, WindowExt};
 
 const WG_SCRIPT: &str = include_str!("../scripts/wg.sh");
 
@@ -792,13 +793,15 @@ fn build_tray(conn_st: &ConnSt, app: &App) -> Result<TrayIcon, Box<dyn std::erro
       .on_menu_event(move |app, event| {
         match event.id.as_ref() {
           "quit" => {
+            // will save the state of all open windows to disk
+            let _ = app.save_window_state(StateFlags::all());
             app.exit(0);
           }
           "open" => {
             if let Some(window) = app.get_webview_window("main") {
-              let _ = window.center();
-              let _ = window.set_focus();
+              let _ = window.restore_state(StateFlags::all());
               let _ = window.show();
+              let _ = window.set_focus();
             }
           }
           _ => {}
@@ -852,7 +855,6 @@ async fn main() {
   tauri::Builder::default()
   .on_window_event(|window, event| {
     if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-      let _ = window.set_always_on_top(false);
       let _ = window.hide();
       api.prevent_close();
     }
@@ -874,6 +876,14 @@ async fn main() {
   })
     .manage(managed_app_state)
     .plugin(tauri_plugin_dialog::init())
+    .plugin(tauri_plugin_window_state::Builder::default().build())
+    .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+      if let Some(window) = app.get_webview_window("main") {
+        let _ = window.restore_state(StateFlags::all());
+        let _ = window.show();
+        let _ = window.set_focus();
+      }
+    }))
     .invoke_handler(tauri::generate_handler![
       get_state,
       list_profile,
