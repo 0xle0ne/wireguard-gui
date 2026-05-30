@@ -58,7 +58,7 @@
     "react-hook-form": "^7.76.1",
     "react-resizable-panels": "^4.11.2",
     "react-spinners": "^0.17.0",
-    "recharts": "^3.8.0",
+    "recharts": "^3.8.1",
     "rxjs": "^7.8.2",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.6.0",
