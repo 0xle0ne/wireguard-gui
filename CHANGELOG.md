@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Save window position when closing and opening the app
 - Use nmcli if available by default
 
+### Fixed
+
+- Snap compatibility
+
 ## [0.1.8] - 2025-10-27
 
 ### Added
