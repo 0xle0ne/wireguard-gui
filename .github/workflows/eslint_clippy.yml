@@ -32,10 +32,10 @@ jobs:
           path: ./node_modules
           key: ${{ hashFiles('./package-lock.json') }}
 
-      - name: Install Node.js v20 LTS
+      - name: Install Node.js v24 LTS
         uses: actions/setup-node@v3
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Install Rust with Clippy
         uses: dtolnay/rust-toolchain@stable
