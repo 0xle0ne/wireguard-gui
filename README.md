@@ -123,3 +123,5 @@ You need to connect the snap to network manager
 ```sh
 sudo snap connect wireguard-gui:network-manager :network-manager
 ```
+
+x
