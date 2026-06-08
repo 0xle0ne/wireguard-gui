@@ -27,6 +27,12 @@ const TRAY_CONNECTED_ICON: &[u8] =
   include_bytes!("../icons/tray_connected.png");
 const TRAY_DISCONNECTED_ICON: &[u8] = include_bytes!("../icons/tray.png");
 
+fn window_state_flags() -> StateFlags {
+  // The main window is fixed-size; restoring geometry beyond position can
+  // fight Linux compositors and replay stale monitor-scale state.
+  StateFlags::POSITION
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct IpPayload {
   pub origin: String,
@@ -794,12 +800,12 @@ fn build_tray(conn_st: &ConnSt, app: &App) -> Result<TrayIcon, Box<dyn std::erro
         match event.id.as_ref() {
           "quit" => {
             // will save the state of all open windows to disk
-            let _ = app.save_window_state(StateFlags::all());
+            let _ = app.save_window_state(window_state_flags());
             app.exit(0);
           }
           "open" => {
             if let Some(window) = app.get_webview_window("main") {
-              let _ = window.restore_state(StateFlags::all());
+              let _ = window.restore_state(window_state_flags());
               let _ = window.show();
               let _ = window.set_focus();
             }
@@ -876,10 +882,15 @@ async fn main() {
   })
     .manage(managed_app_state)
     .plugin(tauri_plugin_dialog::init())
-    .plugin(tauri_plugin_window_state::Builder::default().build())
+    .plugin(
+      tauri_plugin_window_state::Builder::default()
+        .with_state_flags(window_state_flags())
+        .skip_initial_state("main")
+        .build(),
+    )
     .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
       if let Some(window) = app.get_webview_window("main") {
-        let _ = window.restore_state(StateFlags::all());
+        let _ = window.restore_state(window_state_flags());
         let _ = window.show();
         let _ = window.set_focus();
       }
