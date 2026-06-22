@@ -12,7 +12,7 @@ jobs:
 
     steps:
       - name: Checkout repository code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       # Cache Rust
       - uses: actions/cache@v5
