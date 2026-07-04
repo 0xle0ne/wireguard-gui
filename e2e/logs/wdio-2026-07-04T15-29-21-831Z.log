@@ -1,2 +1,0 @@
-2026-07-04T15:30:36.950Z INFO tauri-service:service: [Tauri:Backend:0] update_profile: writing new profile content for e2e-964911
-2026-07-04T15:30:36.951Z INFO tauri-service:service: [Tauri:Backend:0] update_profile: profile is not active, no reconnection needed
