@@ -62,8 +62,9 @@ const appEnv: Record<string, string> = {
   HOME: e2eHome,
   PATH:
     process.platform === 'linux'
-      ? (process.env.PATH || '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin')
-      : (process.env.PATH || ''),
+      ? process.env.PATH ||
+        '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+      : process.env.PATH || '',
 };
 
 for (const key of [
@@ -129,7 +130,8 @@ export const config = {
   exclude: [],
   maxInstances: 1,
   capabilities,
-  logLevel: process.env.WDIO_LOG_LEVEL || (process.env.DEBUG ? 'debug' : 'info'),
+  logLevel:
+    process.env.WDIO_LOG_LEVEL || (process.env.DEBUG ? 'debug' : 'info'),
   groupLogsByTestSpec: false,
   outputDir: './e2e/logs',
   bail: 0,

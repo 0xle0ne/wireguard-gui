@@ -22,7 +22,9 @@ import { SecurityControls, UnlockPanel } from '@/components/security-controls';
 import { AppSplashScreen } from '@/components/app-splash-screen';
 
 const DEFAULT_INACTIVITY_LOCK_MS = 10_000;
-const inactivityLockMsEnv = Number(process.env.NEXT_PUBLIC_INACTIVITY_LOCK_MS ?? '10000');
+const inactivityLockMsEnv = Number(
+  process.env.NEXT_PUBLIC_INACTIVITY_LOCK_MS ?? '10000',
+);
 const INACTIVITY_LOCK_MS =
   Number.isFinite(inactivityLockMsEnv) && inactivityLockMsEnv > 0
     ? inactivityLockMsEnv
@@ -181,8 +183,8 @@ export default function Index() {
             src="/img/wireguard.png"
             width={42}
             height={42}
+            loading="eager"
           />
-          <strong>v{appVersion}</strong>
           <div className="ml-2 flex items-center gap-2">
             <SecurityControls
               encryptionEnabled={state?.encryption_enabled}
@@ -216,6 +218,10 @@ export default function Index() {
           </Suspense>
         )}
       </div>
+      {/* setup the footer at the very end of the window */}
+      <footer className="fixed bottom-0 right-4 h-8 text-sm text-muted-foreground">
+        <strong>v{appVersion}</strong>
+      </footer>
     </div>
   );
 }

@@ -143,11 +143,10 @@ export function SecurityControls({
             <Shield className="size-4" />
           </Button>
         </DialogTrigger>
-        <DialogContent>
+        <DialogContent aria-describedby="security-dialog">
           <DialogHeader>
             <DialogTitle>Security</DialogTitle>
           </DialogHeader>
-
           <div className="space-y-4">
             {!encryptionEnabled ? (
               <form

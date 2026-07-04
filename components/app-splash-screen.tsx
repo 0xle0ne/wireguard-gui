@@ -12,6 +12,7 @@ export function AppSplashScreen() {
         src="/img/wireguard.png"
         width={200}
         height={200}
+        loading="eager"
       />
     </div>
   );
