@@ -307,33 +307,33 @@ async fn list_profile_names(conf_dir: &str, encrypted: bool) -> Result<Vec<Strin
 }
 
 async fn migrate_plain_to_encrypted_in_dir(conf_dir: &str, key: &[u8; 32]) -> Result<(), AppError> {
-  let names = list_profile_names(&conf_dir, false).await?;
+  let names = list_profile_names(conf_dir, false).await?;
   for name in names {
-    let raw = fs::read_to_string(profile_plain_path(&conf_dir, &name))
+    let raw = fs::read_to_string(profile_plain_path(conf_dir, &name))
       .await
       .map_err(|e| AppError::coded("profile_read_failed", format!("Failed to read profile: {e}")))?;
     let encrypted = encrypt_value(&raw, key)
       .map_err(|e| AppError::coded("profile_encrypt_failed", format!("Failed to encrypt profile: {e}")))?;
-    fs::write(profile_enc_path(&conf_dir, &name), encrypted)
+    fs::write(profile_enc_path(conf_dir, &name), encrypted)
       .await
       .map_err(|e| AppError::coded("profile_write_failed", format!("Failed to write profile: {e}")))?;
-    let _ = fs::remove_file(profile_plain_path(&conf_dir, &name)).await;
+    let _ = fs::remove_file(profile_plain_path(conf_dir, &name)).await;
   }
   Ok(())
 }
 
 async fn migrate_encrypted_to_plain_in_dir(conf_dir: &str, key: &[u8; 32]) -> Result<(), AppError> {
-  let names = list_profile_names(&conf_dir, true).await?;
+  let names = list_profile_names(conf_dir, true).await?;
   for name in names {
-    let raw = fs::read_to_string(profile_enc_path(&conf_dir, &name))
+    let raw = fs::read_to_string(profile_enc_path(conf_dir, &name))
       .await
       .map_err(|e| AppError::coded("profile_read_failed", format!("Failed to read encrypted profile: {e}")))?;
     let plain = decrypt_value(&raw, key)
       .map_err(|e| AppError::coded("profile_decrypt_failed", format!("Failed to decrypt profile: {e}")))?;
-    fs::write(profile_plain_path(&conf_dir, &name), plain)
+    fs::write(profile_plain_path(conf_dir, &name), plain)
       .await
       .map_err(|e| AppError::coded("profile_write_failed", format!("Failed to write profile: {e}")))?;
-    let _ = fs::remove_file(profile_enc_path(&conf_dir, &name)).await;
+    let _ = fs::remove_file(profile_enc_path(conf_dir, &name)).await;
   }
   Ok(())
 }

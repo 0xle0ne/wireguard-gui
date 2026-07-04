@@ -10,20 +10,11 @@ use serde::{Deserialize, Serialize};
 const KEY_CHECK_PLAINTEXT: &str = "wireguard-gui-key-check-v1";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct SecurityConfig {
   pub encryption_enabled: bool,
   pub salt_b64: String,
   pub verifier: String,
-}
-
-impl Default for SecurityConfig {
-  fn default() -> Self {
-    Self {
-      encryption_enabled: false,
-      salt_b64: String::new(),
-      verifier: String::new(),
-    }
-  }
 }
 
 pub fn validate_pin(pin: &str) -> bool {
