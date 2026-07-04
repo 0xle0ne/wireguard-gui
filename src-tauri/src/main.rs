@@ -182,9 +182,13 @@ async fn save_security_config(conf_dir: &str, config: &SecurityConfig) -> Result
   let path = security_config_path(conf_dir);
   let payload = serde_json::to_string_pretty(config)
     .map_err(|e| AppError::coded("security_config_invalid", format!("Invalid security config: {e}")))?;
-  fs::write(path, payload)
+  let temp_path = format!("{path}.tmp");
+  fs::write(&temp_path, payload)
     .await
-    .map_err(|e| AppError::coded("security_config_write_failed", format!("Failed to save security config: {e}")))
+    .map_err(|e| AppError::coded("security_config_write_failed", format!("Failed to save security config: {e}")))?;
+  fs::rename(&temp_path, &path)
+    .await
+    .map_err(|e| AppError::coded("security_config_write_failed", format!("Failed to finalize security config: {e}")))
 }
 
 async fn ensure_unlocked_if_needed(app_state: &AppSt) -> Result<Option<[u8; 32]>, AppError> {
@@ -296,8 +300,7 @@ async fn list_profile_names(conf_dir: &str, encrypted: bool) -> Result<Vec<Strin
   Ok(names)
 }
 
-async fn migrate_plain_to_encrypted(app_state: &AppSt, key: &[u8; 32]) -> Result<(), AppError> {
-  let conf_dir = app_state.0.lock().await.conf_dir.clone();
+async fn migrate_plain_to_encrypted_in_dir(conf_dir: &str, key: &[u8; 32]) -> Result<(), AppError> {
   let names = list_profile_names(&conf_dir, false).await?;
   for name in names {
     let raw = fs::read_to_string(profile_plain_path(&conf_dir, &name))
@@ -313,8 +316,7 @@ async fn migrate_plain_to_encrypted(app_state: &AppSt, key: &[u8; 32]) -> Result
   Ok(())
 }
 
-async fn migrate_encrypted_to_plain(app_state: &AppSt, key: &[u8; 32]) -> Result<(), AppError> {
-  let conf_dir = app_state.0.lock().await.conf_dir.clone();
+async fn migrate_encrypted_to_plain_in_dir(conf_dir: &str, key: &[u8; 32]) -> Result<(), AppError> {
   let names = list_profile_names(&conf_dir, true).await?;
   for name in names {
     let raw = fs::read_to_string(profile_enc_path(&conf_dir, &name))
@@ -573,10 +575,11 @@ async fn init_app_st() -> AppSt {
   app_state.clone()
 }
 
-async fn exec_wg(app_state: &AppSt, profile: &str) -> Result<(), AppError> {
+async fn exec_wg_action(app_state: &AppSt, profile: &str, action: &str) -> Result<(), AppError> {
   let conf_dir = app_state.0.lock().await.conf_dir.clone();
   let mut envs = HashMap::new();
   envs.insert("PROFILE".to_owned(), profile);
+  envs.insert("WG_ACTION".to_owned(), action);
 
   let is_snap = is_snap_mode();
   if is_snap {
@@ -586,7 +589,7 @@ async fn exec_wg(app_state: &AppSt, profile: &str) -> Result<(), AppError> {
     println!("[wg-gui] exec_wg: running in native environment for profile {}", profile);
   }
 
-  println!("[wg-gui] exec_wg: executing wg.sh for profile {}", profile);
+  println!("[wg-gui] exec_wg: executing wg.sh for profile {} with action {}", profile, action);
   let res = timeout(
     Duration::from_secs(20),
     Command::new("bash")
@@ -640,8 +643,16 @@ async fn exec_wg(app_state: &AppSt, profile: &str) -> Result<(), AppError> {
     return Err(coded_error);
   }
 
-  println!("[wg-gui] exec_wg: successfully executed wg.sh for profile {}", profile);
+  println!("[wg-gui] exec_wg: successfully executed wg.sh for profile {} with action {}", profile, action);
   Ok(())
+}
+
+async fn exec_wg(app_state: &AppSt, profile: &str) -> Result<(), AppError> {
+  exec_wg_action(app_state, profile, "toggle").await
+}
+
+async fn exec_wg_disconnect(app_state: &AppSt, profile: &str) -> Result<(), AppError> {
+  exec_wg_action(app_state, profile, "disconnect").await
 }
 
 async fn exec_wg_profile(app_state: &AppSt, profile: &str) -> Result<(), AppError> {
@@ -692,15 +703,27 @@ async fn enable_profile_encryption(
   let key = verify_pin(&config, &pin)
     .map_err(|e| AppError::coded("invalid_pin", e))?;
 
+  migrate_plain_to_encrypted_in_dir(&conf_dir, &key).await?;
+  if let Err(error) = save_security_config(&conf_dir, &config).await {
+    let rollback = migrate_encrypted_to_plain_in_dir(&conf_dir, &key).await;
+    return Err(match rollback {
+      Ok(_) => error,
+      Err(rollback_error) => AppError::coded(
+        "security_setup_failed",
+        format!(
+          "Failed to save security config: {}. Rollback also failed: {}",
+          error.message, rollback_error.message
+        ),
+      ),
+    });
+  }
+
   {
     let mut s = app_state.0.lock().await;
     s.encryption_enabled = true;
     s.is_unlocked = true;
     s.unlock_key = Some(key);
   }
-
-  migrate_plain_to_encrypted(&app_state, &key).await?;
-  save_security_config(&conf_dir, &config).await?;
   Ok(())
 }
 
@@ -725,15 +748,20 @@ async fn disable_profile_encryption(
   let key = verify_pin(&config, &pin)
     .map_err(|_| AppError::coded("pin_incorrect", "Incorrect PIN"))?;
 
-  {
-    let mut s = app_state.0.lock().await;
-    s.encryption_enabled = true;
-    s.is_unlocked = true;
-    s.unlock_key = Some(key);
+  migrate_encrypted_to_plain_in_dir(&conf_dir, &key).await?;
+  if let Err(error) = save_security_config(&conf_dir, &SecurityConfig::default()).await {
+    let rollback = migrate_plain_to_encrypted_in_dir(&conf_dir, &key).await;
+    return Err(match rollback {
+      Ok(_) => error,
+      Err(rollback_error) => AppError::coded(
+        "security_disable_failed",
+        format!(
+          "Failed to save disabled security config: {}. Rollback also failed: {}",
+          error.message, rollback_error.message
+        ),
+      ),
+    });
   }
-
-  migrate_encrypted_to_plain(&app_state, &key).await?;
-  save_security_config(&conf_dir, &SecurityConfig::default()).await?;
 
   {
     let mut s = app_state.0.lock().await;
@@ -787,7 +815,7 @@ async fn reset_app_data(app_state: State<'_, AppSt>) -> Result<(), AppError> {
   };
 
   if let Some(profile_name) = current {
-    let _ = exec_wg_profile(&app_state, &profile_name).await;
+    let _ = exec_wg_disconnect(&app_state, &profile_name).await;
   }
 
   let _ = fs::remove_dir_all(&conf_dir).await;
@@ -839,7 +867,7 @@ async fn delete_profile(
   let s = app_state.0.lock().await.clone();
   if let Some(current) = s.current
     && current == profile_name {
-      exec_wg_profile(&app_state, &current).await?;
+      exec_wg_disconnect(&app_state, &current).await?;
       // Sleep for to let time for network to stabilize
       tokio::time::sleep(Duration::from_secs(1)).await;
       sync_connection_state(&app, &app_state).await?;
@@ -859,7 +887,7 @@ async fn connect_profile(
   let conf_dir = s.conf_dir.clone();
   let current = s.current;
   if let Some(current) = current {
-    exec_wg_profile(&app_state, &current).await?;
+    exec_wg_disconnect(&app_state, &current).await?;
   }
   exec_wg_profile(&app_state, &profile).await?;
   tokio::fs::write(format!("{conf_dir}/current"), &profile.trim())
@@ -880,7 +908,7 @@ async fn disconnect(
   let Some(current) = s.current else {
     return Ok(());
   };
-  exec_wg_profile(&app_state, &current).await?;
+  exec_wg_disconnect(&app_state, &current).await?;
   let _ = fs::remove_file(format!("{}/current", s.conf_dir)).await;
   // Sleep for 1 second to let time for network to stabilize
   tokio::time::sleep(Duration::from_secs(1)).await;
@@ -912,7 +940,7 @@ async fn update_profile(
       );
       // Disconnect the active profile
       println!("[wg-gui] update_profile: disconnecting {}", profile_name);
-      if let Err(e) = exec_wg_profile(&app_state, &profile_name).await {
+      if let Err(e) = exec_wg_disconnect(&app_state, &profile_name).await {
         println!("[wg-gui] update_profile: error disconnecting: {}", e.message);
         return Err(e);
       }
@@ -1188,7 +1216,7 @@ async fn main() {
   let managed_app_state = app_state.clone();
   let setup_app_state = app_state.clone();
   // let system_tray = create_tray_menu(&app_state).await;
-  tauri::Builder::default()
+  let builder = tauri::Builder::default()
   .on_window_event(|window, event| {
     if let tauri::WindowEvent::CloseRequested { api, .. } = event {
       let _ = window.hide();
@@ -1212,8 +1240,17 @@ async fn main() {
   })
     .manage(managed_app_state)
     .plugin(tauri_plugin_dialog::init())
+    ;
+
+  #[cfg(debug_assertions)]
+  let builder = builder
     .plugin(tauri_plugin_wdio::init())
-    .plugin(tauri_plugin_wdio_webdriver::init())
+    .plugin(tauri_plugin_wdio_webdriver::init());
+
+  #[cfg(not(debug_assertions))]
+  let builder = builder;
+
+  builder
     .plugin(tauri_plugin_window_state::Builder::default().build())
     .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
       if let Some(window) = app.get_webview_window("main") {

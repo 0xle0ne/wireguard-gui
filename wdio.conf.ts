@@ -60,7 +60,10 @@ if (!existsSync(e2eHome)) {
 
 const appEnv: Record<string, string> = {
   HOME: e2eHome,
-  PATH: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+  PATH:
+    process.platform === 'linux'
+      ? (process.env.PATH || '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin')
+      : (process.env.PATH || ''),
 };
 
 for (const key of [

@@ -21,6 +21,13 @@ import { ProfileTable } from '@/components/profile-table';
 import { SecurityControls, UnlockPanel } from '@/components/security-controls';
 import { AppSplashScreen } from '@/components/app-splash-screen';
 
+const DEFAULT_INACTIVITY_LOCK_MS = 10_000;
+const inactivityLockMsEnv = Number(process.env.NEXT_PUBLIC_INACTIVITY_LOCK_MS ?? '10000');
+const INACTIVITY_LOCK_MS =
+  Number.isFinite(inactivityLockMsEnv) && inactivityLockMsEnv > 0
+    ? inactivityLockMsEnv
+    : DEFAULT_INACTIVITY_LOCK_MS;
+
 export default function Index() {
   const [showSplash, setShowSplash] = useState(true);
   const [state, , , , fetchState] = useAppState();
@@ -135,7 +142,7 @@ export default function Index() {
           },
           () => undefined,
         );
-      }, 10_000);
+      }, INACTIVITY_LOCK_MS);
     };
 
     const events: Array<keyof WindowEventMap> = [
