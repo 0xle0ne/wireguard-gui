@@ -29,6 +29,12 @@ reqwest = { version = "0.13", features = ["json"] }
 tokio = { version = "1", features = ["full"] }
 openssl = { version = "0.10", features = ["v110", "vendored"] }
 tauri-plugin-dialog = "2"
+argon2 = "0.5"
+chacha20poly1305 = { version = "0.10", features = ["std"] }
+base64 = "0.22"
+rand = "0.9"
+tauri-plugin-wdio = "1.2.0"
+tauri-plugin-wdio-webdriver = "1.2.0"
 
 [features]
 dev = []

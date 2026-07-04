@@ -2259,6 +2259,90 @@
           "markdownDescription": "Denies the save command without any pre-configured scope."
         },
         {
+          "description": "Allows all WebDriverIO plugin commands for testing\n#### This default permission set includes:\n\n- `wdio:allow-execute`\n- `wdio:allow-log-frontend`\n- `wdio:allow-debug-plugin`\n- `wdio:allow-get-active-window-label`\n- `wdio:allow-get-window-states`\n- `wdio:allow-list-windows`",
+          "type": "string",
+          "const": "wdio:default",
+          "markdownDescription": "Allows all WebDriverIO plugin commands for testing\n#### This default permission set includes:\n\n- `wdio:allow-execute`\n- `wdio:allow-log-frontend`\n- `wdio:allow-debug-plugin`\n- `wdio:allow-get-active-window-label`\n- `wdio:allow-get-window-states`\n- `wdio:allow-list-windows`"
+        },
+        {
+          "description": "Enables the debug_plugin command without any pre-configured scope.",
+          "type": "string",
+          "const": "wdio:allow-debug-plugin",
+          "markdownDescription": "Enables the debug_plugin command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the execute command without any pre-configured scope.",
+          "type": "string",
+          "const": "wdio:allow-execute",
+          "markdownDescription": "Enables the execute command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_active_window_label command without any pre-configured scope.",
+          "type": "string",
+          "const": "wdio:allow-get-active-window-label",
+          "markdownDescription": "Enables the get_active_window_label command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_window_states command without any pre-configured scope.",
+          "type": "string",
+          "const": "wdio:allow-get-window-states",
+          "markdownDescription": "Enables the get_window_states command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the list_windows command without any pre-configured scope.",
+          "type": "string",
+          "const": "wdio:allow-list-windows",
+          "markdownDescription": "Enables the list_windows command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the log_frontend command without any pre-configured scope.",
+          "type": "string",
+          "const": "wdio:allow-log-frontend",
+          "markdownDescription": "Enables the log_frontend command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the debug_plugin command without any pre-configured scope.",
+          "type": "string",
+          "const": "wdio:deny-debug-plugin",
+          "markdownDescription": "Denies the debug_plugin command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the execute command without any pre-configured scope.",
+          "type": "string",
+          "const": "wdio:deny-execute",
+          "markdownDescription": "Denies the execute command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_active_window_label command without any pre-configured scope.",
+          "type": "string",
+          "const": "wdio:deny-get-active-window-label",
+          "markdownDescription": "Denies the get_active_window_label command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_window_states command without any pre-configured scope.",
+          "type": "string",
+          "const": "wdio:deny-get-window-states",
+          "markdownDescription": "Denies the get_window_states command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the list_windows command without any pre-configured scope.",
+          "type": "string",
+          "const": "wdio:deny-list-windows",
+          "markdownDescription": "Denies the list_windows command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the log_frontend command without any pre-configured scope.",
+          "type": "string",
+          "const": "wdio:deny-log-frontend",
+          "markdownDescription": "Denies the log_frontend command without any pre-configured scope."
+        },
+        {
+          "description": "Default permissions for the plugin",
+          "type": "string",
+          "const": "wdio-webdriver:default",
+          "markdownDescription": "Default permissions for the plugin"
+        },
+        {
           "description": "This permission set configures what kind of\noperations are available from the window state plugin.\n\n#### Granted Permissions\n\nAll operations are enabled by default.\n\n\n#### This default permission set includes:\n\n- `allow-filename`\n- `allow-restore-state`\n- `allow-save-window-state`",
           "type": "string",
           "const": "window-state:default",

@@ -31,5 +31,5 @@
     ".next/dev/types/**/*.ts",
     "**/*.d.ts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "e2e", "wdio.conf.ts"]
 }

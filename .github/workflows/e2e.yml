@@ -1,0 +1,77 @@
+name: E2E
+
+on: [workflow_dispatch, pull_request, push]
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    name: E2E (Linux)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository code
+        uses: actions/checkout@v4
+
+      - name: Install Node.js LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust target
+        uses: actions/cache@v4
+        with:
+          path: ./src-tauri/target
+          key: e2e-${{ runner.os }}-target-${{ hashFiles('./src-tauri/Cargo.lock') }}
+
+      - name: Cache Cargo registry and git
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: e2e-${{ runner.os }}-cargo-${{ hashFiles('./src-tauri/Cargo.lock') }}
+
+      - name: Cache Node modules
+        uses: actions/cache@v4
+        with:
+          path: ./node_modules
+          key: e2e-${{ runner.os }}-node-${{ hashFiles('./package-lock.json') }}
+
+      - name: Cache Next.js build
+        uses: actions/cache@v4
+        with:
+          path: ./.next
+          key: e2e-${{ runner.os }}-next-${{ hashFiles('./package-lock.json', './next.config.mjs') }}
+
+      - name: Install Linux dependencies for Tauri + WebDriver
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            xvfb \
+            webkit2gtk-driver \
+            libappindicator3-dev \
+            librsvg2-dev \
+            libudev-dev \
+            patchelf \
+            libwebkit2gtk-4.1-0 \
+            libwebkit2gtk-4.1-dev \
+            libjavascriptcoregtk-4.1-0 \
+            libjavascriptcoregtk-4.1-dev \
+            gir1.2-javascriptcoregtk-4.1 \
+            gir1.2-webkit2-4.1
+
+      - name: Install node dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Build debug binary only
+        run: npm run e2e:build
+
+      - name: Run e2e security suite
+        run: xvfb-run -a npm run e2e:test:security

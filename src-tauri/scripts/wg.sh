@@ -5,6 +5,7 @@ export LC_ALL=C
 home="${HOME:-}"
 profile="${PROFILE:-}"
 is_snap="${IS_SNAP:-false}"
+wg_action="${WG_ACTION:-toggle}"
 
 run_with_timeout() {
   local duration="$1"
@@ -30,6 +31,10 @@ if [[ -z "$profile" ]]; then
   exit 2
 fi
 
+if [[ "$wg_action" != "toggle" && "$wg_action" != "disconnect" ]]; then
+  fail "Invalid WG_ACTION: $wg_action" 2
+fi
+
 # Linux interface names are max 15 chars.
 if [[ ! "$profile" =~ ^[a-zA-Z0-9_.=-]{1,15}$ ]]; then
   fail "Invalid PROFILE/interface name: $profile" 2
@@ -39,10 +44,6 @@ echo "Connecting to $profile (IS_SNAP=$is_snap)"
 
 user_conf="$home/.config/wireguard-gui/profiles/$profile.conf"
 profile_path="/etc/wireguard/$profile.conf"
-
-if [[ ! -f "$user_conf" ]]; then
-  fail "Profile not found: $user_conf" 3
-fi
 
 # Check if nmcli is available
 has_nmcli() {
@@ -67,6 +68,15 @@ if has_nmcli; then
     }
     echo "Connection $conn_name brought down"
     exit 0
+  fi
+
+  if [[ "$wg_action" == "disconnect" ]]; then
+    echo "Connection $conn_name already disconnected"
+    exit 0
+  fi
+
+  if [[ ! -f "$user_conf" ]]; then
+    fail "Profile not found: $user_conf" 3
   fi
 
   # Clean up any old connections with the same name (handles renames/updates)
@@ -142,14 +152,12 @@ set -euo pipefail
 profile="${1:-}"
 user_conf="${2:-}"
 profile_path="${3:-}"
+wg_action="${4:-toggle}"
 
-if [[ -z "$profile" || -z "$user_conf" || -z "$profile_path" ]]; then
+if [[ -z "$profile" || -z "$profile_path" ]]; then
   echo "Error: Invalid parameters" >&2
   exit 1
 fi
-
-# Copy profile to system wireguard directory
-cp -f "$user_conf" "$profile_path"
 
 # Toggle the connection
 if ip link show dev "$profile" >/dev/null 2>&1; then
@@ -157,6 +165,19 @@ if ip link show dev "$profile" >/dev/null 2>&1; then
   echo "Bringing down interface $profile..."
   wg-quick down "$profile"
 else
+  if [[ "$wg_action" == "disconnect" ]]; then
+    echo "Interface $profile already disconnected"
+    exit 0
+  fi
+
+  if [[ -z "$user_conf" || ! -f "$user_conf" ]]; then
+    echo "Profile not found: $user_conf" >&2
+    exit 3
+  fi
+
+  # Copy profile to system wireguard directory
+  cp -f "$user_conf" "$profile_path"
+
   # Interface doesn't exist, bring it up
   echo "Bringing up interface $profile..."
   wg-quick up "$profile"
@@ -167,7 +188,7 @@ chmod +x "$tmp_script"
 
 # Run as root using pkexec with proper error handling
 status=0
-pkexec "$tmp_script" "$profile" "$user_conf" "$profile_path" || status=$?
+pkexec "$tmp_script" "$profile" "$user_conf" "$profile_path" "$wg_action" || status=$?
 if [[ "$status" -ne 0 ]]; then
   echo "wg-quick failed with status $status" >&2
   exit "$status"

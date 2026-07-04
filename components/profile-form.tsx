@@ -64,8 +64,6 @@ export default function ProfileForm({
     [data],
   );
 
-  console.log({ defaultValues });
-
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: defaultValues,
@@ -104,7 +102,12 @@ export default function ProfileForm({
             <FormItem>
               <FormLabel>Name</FormLabel>
               <FormControl>
-                <Input placeholder="wgnet0" {...field} disabled={!!editId} />
+                <Input
+                  placeholder="wgnet0"
+                  {...field}
+                  disabled={!!editId}
+                  data-testid="profile-name"
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -121,6 +124,7 @@ export default function ProfileForm({
                   className="h-[280px] resize-none"
                   placeholder={contentPlaceholder}
                   {...field}
+                  data-testid="profile-content"
                 />
               </FormControl>
               <FormMessage />
@@ -133,6 +137,7 @@ export default function ProfileForm({
           className="w-full cursor-pointer"
           type="submit"
           disabled={isLoading}
+          data-testid="profile-save"
         >
           {isLoading ? 'Loading...' : 'Save'}
         </Button>

@@ -3,3 +3,5 @@ dist
 .next
 target
 out
+e2e/.home/
+e2e/logs/
