@@ -65,6 +65,7 @@ export function ProfileDialogForm({
         onClick={openModal}
         className={cn(className, 'cursor-pointer')}
         title="New"
+        data-testid="profile-new"
       >
         <Plus className="mr-2 size-4 cursor-pointer" />
       </button>

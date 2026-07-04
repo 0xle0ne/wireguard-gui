@@ -26,6 +26,8 @@ export default defineConfig([
     '**/*.config.js',
     'src-tauri/*',
     'out/*',
+    'e2e/*',
+    'wdio.conf.ts',
     'eslint.config.mjs',
     'ts.config.json',
   ]),

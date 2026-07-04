@@ -96,13 +96,35 @@ To get started you only need one command
 npm run dev
 ```
 
-## Production
+## E2E tests (WebDriver)
 
-To build in production you can do it in a single command.
-This will build and export Next.js and build Tauri for your current environnement.
+This project includes Tauri end-to-end tests powered by WebdriverIO and `@wdio/tauri-service`.
+
+On Linux, install WebKit WebDriver support first:
 
 ```sh
-npm run tauri build
+sudo apt-get install webkit2gtk-driver -y
+```
+
+Build the debug app binary (without `.deb`/`.rpm` bundles) and run tests:
+
+```sh
+npm run e2e
+```
+
+Or run each step manually:
+
+```sh
+npm run e2e:build
+npm run e2e:test
+```
+
+## Production
+
+To build only the production app binary in a single command (no `.deb` / `.rpm` / `.appimage` bundles):
+
+```sh
+npm run build
 ```
 
 ## Documentation

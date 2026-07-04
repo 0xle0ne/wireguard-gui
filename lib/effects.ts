@@ -201,6 +201,69 @@ export function exportProfiles(
     .finally(onfinally);
 }
 
+export function enableProfileEncryption(
+  pin: string,
+  onsuccess?: () => void,
+  onerror?: (err: CommandError) => void,
+  onfinally?: () => void,
+) {
+  return require('@tauri-apps/api/core')
+    .invoke('enable_profile_encryption', { pin })
+    .then(() => onsuccess?.())
+    .catch((err: unknown) => onerror?.(normalizeInvokeError(err)))
+    .finally(onfinally);
+}
+
+export function disableProfileEncryption(
+  pin: string,
+  onsuccess?: () => void,
+  onerror?: (err: CommandError) => void,
+  onfinally?: () => void,
+) {
+  return require('@tauri-apps/api/core')
+    .invoke('disable_profile_encryption', { pin })
+    .then(() => onsuccess?.())
+    .catch((err: unknown) => onerror?.(normalizeInvokeError(err)))
+    .finally(onfinally);
+}
+
+export function unlockProfiles(
+  pin: string,
+  onsuccess?: () => void,
+  onerror?: (err: CommandError) => void,
+  onfinally?: () => void,
+) {
+  return require('@tauri-apps/api/core')
+    .invoke('unlock_profiles', { pin })
+    .then(() => onsuccess?.())
+    .catch((err: unknown) => onerror?.(normalizeInvokeError(err)))
+    .finally(onfinally);
+}
+
+export function lockProfiles(
+  onsuccess?: () => void,
+  onerror?: (err: CommandError) => void,
+  onfinally?: () => void,
+) {
+  return require('@tauri-apps/api/core')
+    .invoke('lock_profiles')
+    .then(() => onsuccess?.())
+    .catch((err: unknown) => onerror?.(normalizeInvokeError(err)))
+    .finally(onfinally);
+}
+
+export function resetAppData(
+  onsuccess?: () => void,
+  onerror?: (err: CommandError) => void,
+  onfinally?: () => void,
+) {
+  return require('@tauri-apps/api/core')
+    .invoke('reset_app_data')
+    .then(() => onsuccess?.())
+    .catch((err: unknown) => onerror?.(normalizeInvokeError(err)))
+    .finally(onfinally);
+}
+
 export const useDebounce = (time: number, initialValue: any) => {
   const [value, setValue] = React.useState(initialValue);
   const [values] = React.useState(() => new Subject());

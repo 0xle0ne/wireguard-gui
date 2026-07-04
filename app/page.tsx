@@ -10,12 +10,15 @@ import {
   CommandError,
   connect,
   disconnect,
+  lockProfiles,
+  resetAppData,
   useAppLoader,
   useAppState,
 } from '@/lib/effects';
 import { Button } from '@/components/ui/button';
 import { AppLoader } from '@/components/app-loader';
 import { ProfileTable } from '@/components/profile-table';
+import { SecurityControls, UnlockPanel } from '@/components/security-controls';
 import { AppSplashScreen } from '@/components/app-splash-screen';
 
 export default function Index() {
@@ -57,6 +60,8 @@ export default function Index() {
         'Permission denied. Check polkit/network-manager permissions.',
       profile_exists: 'A profile with this name already exists.',
       profile_not_found: 'Profile no longer exists on disk.',
+      pin_incorrect: 'Incorrect security PIN.',
+      profiles_locked: 'Profiles are locked. Unlock first.',
       script_failed: 'Connection script failed. Check logs for details.',
       timeout: 'Network operation timed out. Please retry.',
     };
@@ -93,6 +98,70 @@ export default function Index() {
     disconnect(onConnectionFinish(), onError);
   }, [state, setAppLoader, onConnectionFinish, onError]);
 
+  const onResetAppData = useCallback(() => {
+    resetAppData(
+      () => {
+        toast.success('App data reset complete');
+        fetchState();
+      },
+      (commandError) => {
+        toast.error('Failed to reset app', {
+          description: commandError.message,
+        });
+      },
+    );
+  }, [fetchState]);
+
+  useEffect(() => {
+    if (!state?.encryption_enabled || !state?.is_unlocked) {
+      return;
+    }
+
+    let timeoutId: number | undefined;
+    let disposed = false;
+
+    const scheduleLock = () => {
+      if (timeoutId) {
+        window.clearTimeout(timeoutId);
+      }
+      timeoutId = window.setTimeout(() => {
+        if (disposed) {
+          return;
+        }
+        lockProfiles(
+          () => {
+            fetchState();
+            toast.info('Profiles locked due to inactivity');
+          },
+          () => undefined,
+        );
+      }, 10_000);
+    };
+
+    const events: Array<keyof WindowEventMap> = [
+      'mousemove',
+      'mousedown',
+      'keydown',
+      'touchstart',
+      'scroll',
+    ];
+
+    for (const eventName of events) {
+      window.addEventListener(eventName, scheduleLock, { passive: true });
+    }
+    scheduleLock();
+
+    return () => {
+      disposed = true;
+      if (timeoutId) {
+        window.clearTimeout(timeoutId);
+      }
+      for (const eventName of events) {
+        window.removeEventListener(eventName, scheduleLock);
+      }
+    };
+  }, [state?.encryption_enabled, state?.is_unlocked, fetchState]);
+
   return (
     <div className="bg-background h-screen">
       {showSplash && <AppSplashScreen />}
@@ -107,15 +176,21 @@ export default function Index() {
             height={42}
           />
           <strong>v{appVersion}</strong>
-          <Button
-            disabled={state?.conn_st !== 'Connected'}
-            title="disconnect"
-            variant={state?.conn_st === 'Connected' ? 'destructive' : null}
-            className="ml-2"
-            onClick={onDisconnect}
-          >
-            <PowerOff className="size-4" />
-          </Button>
+          <div className="ml-2 flex items-center gap-2">
+            <SecurityControls
+              encryptionEnabled={state?.encryption_enabled}
+              isUnlocked={state?.is_unlocked}
+              onStateChanged={fetchState}
+            />
+            <Button
+              disabled={state?.conn_st !== 'Connected'}
+              title="disconnect"
+              variant={state?.conn_st === 'Connected' ? 'destructive' : null}
+              onClick={onDisconnect}
+            >
+              <PowerOff className="size-4" />
+            </Button>
+          </div>
         </div>
         <div className="mb-8 flex flex-col items-center justify-center">
           {state.conn_st === 'Connected' ? (
@@ -126,9 +201,13 @@ export default function Index() {
           <p className="mt-2 font-bold">{state.current || 'Not connected'}</p>
           <p className="font-bold">{state?.pub_ip || 'ip undetected'}</p>
         </div>
-        <Suspense>
-          <ProfileTable current={state?.current} onConnect={onConnect} />
-        </Suspense>
+        {state?.encryption_enabled && !state?.is_unlocked ? (
+          <UnlockPanel onUnlocked={fetchState} onReset={onResetAppData} />
+        ) : (
+          <Suspense>
+            <ProfileTable current={state?.current} onConnect={onConnect} />
+          </Suspense>
+        )}
       </div>
     </div>
   );
