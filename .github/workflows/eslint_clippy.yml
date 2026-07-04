@@ -12,28 +12,28 @@ jobs:
 
     steps:
       - name: Checkout repository code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
 
       # Cache Rust
-      - uses: actions/cache@v3
+      - uses: actions/cache@v6
         with:
           path: ./src-tauri/target
           key: ${{ hashFiles('./src-tauri/Cargo.lock') }}
 
       # Cache Rust
-      - uses: actions/cache@v3
+      - uses: actions/cache@v6
         with:
           path: ~/.cargo
           key: ${{ hashFiles('./src-tauri/Cargo.lock') }}
 
       # Cache Node
-      - uses: actions/cache@v3
+      - uses: actions/cache@v6
         with:
           path: ./node_modules
           key: ${{ hashFiles('./package-lock.json') }}
 
       - name: Install Node.js v24 LTS
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v6
         with:
           node-version: 24
 

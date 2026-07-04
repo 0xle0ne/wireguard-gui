@@ -1,5 +1,6 @@
 #!/bin/bash
 set -euo pipefail
+export LC_ALL=C
 
 home="${HOME:-}"
 profile="${PROFILE:-}"
