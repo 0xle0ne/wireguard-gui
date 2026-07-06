@@ -74,7 +74,7 @@
   "devDependencies": {
     "@eslint/compat": "^2.1.0",
     "@ianvs/prettier-plugin-sort-imports": "^4.7.1",
-    "@tailwindcss/postcss": "^4.3.0",
+    "@tailwindcss/postcss": "^4.3.2",
     "@tauri-apps/cli": "^2.11.2",
     "@wdio/cli": "9.27.1",
     "@wdio/globals": "9.27.1",
