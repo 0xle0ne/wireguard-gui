@@ -13,7 +13,7 @@ jobs:
 
     steps:
       - name: Checkout repository code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Node.js LTS
         uses: actions/setup-node@v4
