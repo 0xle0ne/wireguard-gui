@@ -25,13 +25,13 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Rust target
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ./src-tauri/target
           key: e2e-${{ runner.os }}-target-${{ hashFiles('./src-tauri/Cargo.lock') }}
 
       - name: Cache Cargo registry and git
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -39,13 +39,13 @@ jobs:
           key: e2e-${{ runner.os }}-cargo-${{ hashFiles('./src-tauri/Cargo.lock') }}
 
       - name: Cache Node modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ./node_modules
           key: e2e-${{ runner.os }}-node-${{ hashFiles('./package-lock.json') }}
 
       - name: Cache Next.js build
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ./.next
           key: e2e-${{ runner.os }}-next-${{ hashFiles('./package-lock.json', './next.config.mjs') }}
