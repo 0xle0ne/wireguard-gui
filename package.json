@@ -83,7 +83,7 @@
     "@wdio/spec-reporter": "9.29.1",
     "@wdio/tauri-service": "^1.2.0",
     "@wdio/types": "9.27.1",
-    "@types/node": "^25.9.1",
+    "@types/node": "^26.1.1",
     "@types/mocha": "^10.0.10",
     "@types/react": "^19.2.16",
     "@types/react-dom": "^19.2.3",
