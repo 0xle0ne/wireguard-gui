@@ -100,8 +100,5 @@
     "prettier-plugin-rust": "0.1.9",
     "tailwindcss": "4.3.3",
     "typescript": "6.0.3"
-  },
-  "overrides": {
-    "@wdio/native-utils": "2.5.0"
   }
 }
