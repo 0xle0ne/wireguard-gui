@@ -39,15 +39,20 @@ export function useInvoke<T, I>(initialValue: I, cmd: string, args?: any) {
   const [data, setData] = React.useState<T | I>(initialValue);
   const [err, setErr] = React.useState<string | null>(null);
   const [isLoading, setisLoading] = React.useState<boolean>(true);
-  const fetch = React.useCallback(() => {
-    setisLoading(true);
+  const execute = React.useCallback(() => {
     require('@tauri-apps/api/core')
       .invoke(cmd, args)
       .then((d: T) => setData(d))
       .catch((error: any) => setErr(error))
       .finally(() => setisLoading(false));
   }, [args, cmd]);
-  React.useEffect(() => fetch(), [fetch]);
+  const fetch = React.useCallback(() => {
+    setisLoading(true);
+    execute();
+  }, [execute]);
+  React.useEffect(() => {
+    execute();
+  }, [execute]);
   return [data, err, isLoading, setData, fetch] as const;
 }
 
