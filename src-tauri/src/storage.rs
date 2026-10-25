@@ -25,7 +25,10 @@ pub fn write_private(path: &str, content: &[u8]) -> io::Result<()> {
     file.write_all(content)?;
     file.sync_all()?;
     fs::rename(&temporary, destination)?;
-    fs::File::open(parent)?.sync_all()
+    // A failed directory sync cannot undo rename. Report the committed write
+    // as successful so callers never roll back data referenced by this file.
+    let _ = fs::File::open(parent).and_then(|directory| directory.sync_all());
+    Ok(())
   })();
   if result.is_err() {
     let _ = fs::remove_file(&temporary);

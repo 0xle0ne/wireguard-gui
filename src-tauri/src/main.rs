@@ -314,8 +314,14 @@ async fn list_profile_names(conf_dir: &str, encrypted: bool) -> Result<Vec<Strin
   Ok(names)
 }
 
-async fn remove_staged_profiles(paths: &[String]) {
-  for path in paths { let _ = fs::remove_file(path).await; }
+async fn remove_staged_profiles(paths: &[String]) -> Result<(), AppError> {
+  let mut failed = Vec::new();
+  for path in paths {
+    if let Err(error) = fs::remove_file(path).await { failed.push(format!("{path}: {error}")); }
+  }
+  if failed.is_empty() { Ok(()) } else {
+    Err(AppError::coded("profile_cleanup_failed", format!("Migration failed; staged profiles could not be removed: {}", failed.join(", "))))
+  }
 }
 
 async fn migrate_profiles(conf_dir: &str, key: &[u8; 32], encrypt: bool) -> Result<Vec<String>, AppError> {
@@ -334,7 +340,7 @@ async fn migrate_profiles(conf_dir: &str, key: &[u8; 32], encrypt: bool) -> Resu
   for (target, payload) in converted {
     // Never overwrite a surviving representation from an interrupted migration.
     if let Err(error) = storage::export_private(&target, payload.as_bytes()) {
-      remove_staged_profiles(&staged).await;
+      remove_staged_profiles(&staged).await?;
       return Err(AppError::coded("profile_write_failed", format!("Failed to stage profile: {error}")));
     }
     staged.push(target);
@@ -744,7 +750,7 @@ async fn enable_profile_encryption(
   let staged = migrate_plain_to_encrypted_in_dir(&conf_dir, &key).await?;
   // Keep every source profile until both migration and its key are durable.
   if let Err(error) = save_security_config(&conf_dir, &config).await {
-    remove_staged_profiles(&staged).await;
+    remove_staged_profiles(&staged).await?;
     return Err(error);
   }
 
@@ -782,7 +788,7 @@ async fn disable_profile_encryption(
 
   let staged = migrate_encrypted_to_plain_in_dir(&conf_dir, &key).await?;
   if let Err(error) = save_security_config(&conf_dir, &SecurityConfig::default()).await {
-    remove_staged_profiles(&staged).await;
+    remove_staged_profiles(&staged).await?;
     return Err(error);
   }
 
@@ -1266,11 +1272,15 @@ async fn main() {
     let app_handle = app.handle().clone();
     let monitor_state = setup_app_state.clone();
     tauri::async_runtime::spawn(async move {
-      let _ = sync_connection_state(&app_handle, &monitor_state).await;
+      {
+        let _operation = PROFILE_OPERATION_LOCK.lock().await;
+        let _ = sync_connection_state(&app_handle, &monitor_state).await;
+      }
       let mut interval = tokio::time::interval(Duration::from_secs(1));
       interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
       loop {
         interval.tick().await;
+        let _operation = PROFILE_OPERATION_LOCK.lock().await;
         let _ = sync_connection_state(&app_handle, &monitor_state).await;
       }
     });
