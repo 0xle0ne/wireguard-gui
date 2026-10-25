@@ -1,7 +1,7 @@
 name: wireguard-gui
 title: Wireguard GUI
 base: core24
-version: '0.1.9'
+version: '0.1.13'
 summary: Wireguard client GUI
 icon: src-tauri/icons/128x128.png
 description: |

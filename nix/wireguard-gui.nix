@@ -28,7 +28,7 @@ rustPlatform.buildRustPackage rec {
 
   npmDeps = fetchNpmDeps {
     inherit pname version src;
-    hash = "sha256-1CZuNkvMINuWpEBCuR/St8BzysydRvD5DAyHL6K6wHw=";
+    hash = "sha256-vYEInkuDy0kq7FWNzjdD6bXqZ04/ljmCzIJyrRnzq38=";
   };
 
   cargoRoot = "src-tauri";

@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.13] - Unreleased
+
+### Fixed
+
+- Require confirmation before resetting data from the locked screen and clear cached profiles after reset.
+- Preserve original profiles when encryption changes fail, validate profile paths, and restrict private-key file permissions.
+- Report connection and reset failures instead of claiming success, and leave unrelated NetworkManager connections alone.
+- Bound startup network probes and initialize AppImage graphics settings before starting background threads.
+- Restore Linux build and draft-release workflows and declare Debian VPN runtime dependencies.
+- Update Nix packaging for Tauri 2 and provide the documented production build command.
+- Repair security E2E type checks and update compatible WebDriver dependencies to address audit findings.
+- Keep profile sorting stable and case-insensitive without mutating state.
+- Remove an unused Google Fonts download so frontend builds work offline.
+
 ## [0.1.12] - 2026-07-04
 
 ### Added
