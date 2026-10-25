@@ -9,6 +9,7 @@
   nodejs_24,
   npmHooks,
   libiconv,
+  libayatana-appindicator,
   openssl,
   pkg-config,
   webkitgtk_4_1,
@@ -52,6 +53,7 @@ rustPlatform.buildRustPackage rec {
       libiconv
     ]
     ++ lib.optionals stdenv.hostPlatform.isLinux [
+      libayatana-appindicator
       glib-networking # Most Tauri apps need networking
       libsoup_3
       webkitgtk_4_1
