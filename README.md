@@ -74,6 +74,17 @@ Release are currently available as .deb package for Debian/Ubuntu or Appimage fo
 yay -S wireguard-gui-bin
 ```
 
+#### Install with Nix (Linux):
+
+```sh
+nix run github:0xle0ne/wireguard-gui
+```
+
+To build a local checkout, run `nix build`. Enable NetworkManager on the host
+(for NixOS, `networking.networkmanager.enable = true;`) to manage WireGuard
+connections through `nmcli`. Host networking and authorization services are
+required even when the application itself is installed with Nix.
+
 ## Developing
 
 Be sure you have [NodeJS](https://nodejs.org/en/) and [Rust](https://www.rust-lang.org/) installed on your system
