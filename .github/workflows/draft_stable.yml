@@ -7,104 +7,75 @@ on:
   pull_request:
     branches:
       - 'release/stable/**'
-    types: [opened, synchronize]
 
-env:
-  CARGO_TERM_COLOR: always
+permissions:
+  contents: read
+
+concurrency:
+  group: draft-stable-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  draft_stable:
-    runs-on: ubuntu-24.04
-
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7
-      # Extract branch info
-      - name: Set info
-        run: |
-          echo "CHANNEL=$(echo ${GITHUB_REF} | awk -F/ '{print $4}')" >> $GITHUB_ENV
-          echo "VERSION=$(echo ${GITHUB_REF} | awk -F/ '{print $5}')" >> $GITHUB_ENV
-      # Print info for debug
-      - name: Print Info
-        run: |
-          echo $GITHUB_REF
-          echo $CHANNEL
-          echo $VERSION
-
-      # Cache Rust
-      - uses: actions/cache@v6
+      - uses: actions/setup-node@v7
         with:
-          path: ./src-tauri/target
-          key: ubuntu-x86_64${{ hashFiles('./src-tauri/Cargo.lock') }}
-
-      # Cache Rust
-      - uses: actions/cache@v6
-        with:
-          path: ~/.cargo
-          key: ubuntu-x86_64${{ hashFiles('./src-tauri/Cargo.lock') }}
-
-      # Cache Node
-      - uses: actions/cache@v6
-        with:
-          path: ./node_modules
-          key: ubuntu-x86_64${{ hashFiles('./package-lock.json') }}
-
-      # Cache Next.js
-      - uses: actions/cache@v6
-        with:
-          path: ./src-next/.next
-          key: ubuntu-x86_64${{ hashFiles('./src-next/package-lock.json') }}
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
+          node-version: '24'
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
       - name: Install Tauri dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libappindicator3-dev librsvg2-dev libudev-dev patchelf \
-            libwebkit2gtk-4.1-0=2.44.0-2 \
-            libwebkit2gtk-4.1-dev=2.44.0-2 \
-            libjavascriptcoregtk-4.1-0=2.44.0-2 \
-            libjavascriptcoregtk-4.1-dev=2.44.0-2 \
-            gir1.2-javascriptcoregtk-4.1=2.44.0-2 \
-            gir1.2-webkit2-4.1=2.44.0-2
-
+          sudo apt-get install -y libappindicator3-dev librsvg2-dev libudev-dev patchelf libwebkit2gtk-4.1-dev
       - name: Install node dependencies
-        run: npm install --legacy-peer-deps
-
+        run: npm ci --legacy-peer-deps
+      - name: Validate release version
+        if: github.event_name == 'push'
+        run: |
+          branch_version="${GITHUB_REF_NAME#release/stable/}"
+          app_version="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          test "$branch_version" = "$app_version"
       - name: Build application
-        run: npm run tauri build
+        run: npm run tauri build -- --bundles deb,appimage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bundles-${{ matrix.runner }}
+          path: |
+            src-tauri/target/release/bundle/deb/*.deb
+            src-tauri/target/release/bundle/appimage/*.AppImage
+          if-no-files-found: error
 
-      - name: Test if release already exists
-        id: release-exists
-        continue-on-error: true
-        run: gh release view $VERSION-$CHANNEL
+  draft:
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: bundles-*
+          path: bundles
+          merge-multiple: true
+      - name: Create or update draft release
         env:
-          GITHUB_TOKEN: ${{ secrets.CI_TOKEN }}
-      - name: Create draft release
-        if: steps.release-exists.outcome == 'failure' && steps.release-exists.conclusion == 'success'
+          GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create -d \
-            $VERSION-$CHANNEL \
-            -t $VERSION-$CHANNEL \
-            -F ./CHANGELOG.md \
-            ./src-tauri/target/release/bundle/deb/wireguard-gui_${VERSION}_amd64.deb#wireguard-gui_amd64.deb \
-            ./src-tauri/target/release/bundle/appimage/wireguard-gui_${VERSION}_amd64.AppImage#wireguard-gui_amd64.AppImage
-        env:
-          GITHUB_TOKEN: ${{ secrets.CI_TOKEN }}
-      - name: Update draft release
-        if: steps.release-exists.outcome == 'success' && steps.release-exists.conclusion == 'success'
-        run: |
-          gh release delete-asset -y \
-            $VERSION-$CHANNEL \
-            wireguard-gui_${VERSION}_amd64.deb || true
-          gh release delete-asset -y \
-            $VERSION-$CHANNEL \
-            wireguard-gui_${VERSION}_amd64.AppImage|| true
-          gh release upload \
-            $VERSION-$CHANNEL \
-            ./src-tauri/target/release/bundle/deb/wireguard-gui_${VERSION}_amd64.deb#wireguard-gui_amd64.deb
-          gh release upload \
-            $VERSION-$CHANNEL \
-            ./src-tauri/target/release/bundle/appimage/wireguard-gui_${VERSION}_amd64.AppImage#wireguard-gui_amd64.AppImage
-        env:
-          GITHUB_TOKEN: ${{ secrets.CI_TOKEN }}
+          set -euo pipefail
+          version="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          tag="$version-stable"
+          if gh release view "$tag" --json isDraft > release.json; then
+            test "$(jq -r .isDraft release.json)" = true
+          else
+            gh release create "$tag" --draft --target "$GITHUB_SHA" --title "$tag" --notes-file CHANGELOG.md
+          fi
+          mapfile -t assets < <(find bundles -type f \( -name '*.deb' -o -name '*.AppImage' \))
+          test "${#assets[@]}" -eq 4
+          gh release upload "$tag" "${assets[@]}" --clobber
