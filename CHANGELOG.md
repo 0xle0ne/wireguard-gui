@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.13] - Unreleased
 
+### Security
+
+- Update ctutils, rustls-webpki and webpki-root-certs to patched compatible releases.
+
 ### Fixed
 
 - Require confirmation before resetting data from the locked screen and clear cached profiles after reset.
