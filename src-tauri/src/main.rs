@@ -314,34 +314,40 @@ async fn list_profile_names(conf_dir: &str, encrypted: bool) -> Result<Vec<Strin
   Ok(names)
 }
 
-async fn migrate_plain_to_encrypted_in_dir(conf_dir: &str, key: &[u8; 32]) -> Result<(), AppError> {
-  let names = list_profile_names(conf_dir, false).await?;
-  for name in names {
-    let raw = fs::read_to_string(profile_plain_path(conf_dir, &name))
-      .await
-      .map_err(|e| AppError::coded("profile_read_failed", format!("Failed to read profile: {e}")))?;
-    let encrypted = encrypt_value(&raw, key)
-      .map_err(|e| AppError::coded("profile_encrypt_failed", format!("Failed to encrypt profile: {e}")))?;
-    storage::write_private(&profile_enc_path(conf_dir, &name), encrypted.as_bytes())
-      .map_err(|e| AppError::coded("profile_write_failed", format!("Failed to write profile: {e}")))?;
-
-  }
-  Ok(())
+async fn remove_staged_profiles(paths: &[String]) {
+  for path in paths { let _ = fs::remove_file(path).await; }
 }
 
-async fn migrate_encrypted_to_plain_in_dir(conf_dir: &str, key: &[u8; 32]) -> Result<(), AppError> {
-  let names = list_profile_names(conf_dir, true).await?;
+async fn migrate_profiles(conf_dir: &str, key: &[u8; 32], encrypt: bool) -> Result<Vec<String>, AppError> {
+  let names = list_profile_names(conf_dir, !encrypt).await?;
+  let mut converted = Vec::new();
+  // Validate and convert the entire set before exposing any new representation.
   for name in names {
-    let raw = fs::read_to_string(profile_enc_path(conf_dir, &name))
-      .await
-      .map_err(|e| AppError::coded("profile_read_failed", format!("Failed to read encrypted profile: {e}")))?;
-    let plain = decrypt_value(&raw, key)
-      .map_err(|e| AppError::coded("profile_decrypt_failed", format!("Failed to decrypt profile: {e}")))?;
-    storage::write_private(&profile_plain_path(conf_dir, &name), plain.as_bytes())
-      .map_err(|e| AppError::coded("profile_write_failed", format!("Failed to write profile: {e}")))?;
-
+    let source = if encrypt { profile_plain_path(conf_dir, &name) } else { profile_enc_path(conf_dir, &name) };
+    let target = if encrypt { profile_enc_path(conf_dir, &name) } else { profile_plain_path(conf_dir, &name) };
+    let raw = fs::read_to_string(source).await.map_err(|e| AppError::coded("profile_read_failed", format!("Failed to read profile: {e}")))?;
+    let payload = if encrypt { encrypt_value(&raw, key) } else { decrypt_value(&raw, key) }
+      .map_err(|e| AppError::coded("profile_conversion_failed", e))?;
+    converted.push((target, payload));
   }
-  Ok(())
+  let mut staged = Vec::new();
+  for (target, payload) in converted {
+    // Never overwrite a surviving representation from an interrupted migration.
+    if let Err(error) = storage::export_private(&target, payload.as_bytes()) {
+      remove_staged_profiles(&staged).await;
+      return Err(AppError::coded("profile_write_failed", format!("Failed to stage profile: {error}")));
+    }
+    staged.push(target);
+  }
+  Ok(staged)
+}
+
+async fn migrate_plain_to_encrypted_in_dir(conf_dir: &str, key: &[u8; 32]) -> Result<Vec<String>, AppError> {
+  migrate_profiles(conf_dir, key, true).await
+}
+
+async fn migrate_encrypted_to_plain_in_dir(conf_dir: &str, key: &[u8; 32]) -> Result<Vec<String>, AppError> {
+  migrate_profiles(conf_dir, key, false).await
 }
 
 // Only remove old representations after the security configuration was committed.
@@ -735,9 +741,12 @@ async fn enable_profile_encryption(
   let key = verify_pin(&config, &pin)
     .map_err(|e| AppError::coded("invalid_pin", e))?;
 
-  migrate_plain_to_encrypted_in_dir(&conf_dir, &key).await?;
+  let staged = migrate_plain_to_encrypted_in_dir(&conf_dir, &key).await?;
   // Keep every source profile until both migration and its key are durable.
-  save_security_config(&conf_dir, &config).await?;
+  if let Err(error) = save_security_config(&conf_dir, &config).await {
+    remove_staged_profiles(&staged).await;
+    return Err(error);
+  }
 
   {
     let mut s = app_state.0.lock().await;
@@ -771,8 +780,11 @@ async fn disable_profile_encryption(
   let key = verify_pin(&config, &pin)
     .map_err(|_| AppError::coded("pin_incorrect", "Incorrect PIN"))?;
 
-  migrate_encrypted_to_plain_in_dir(&conf_dir, &key).await?;
-  save_security_config(&conf_dir, &SecurityConfig::default()).await?;
+  let staged = migrate_encrypted_to_plain_in_dir(&conf_dir, &key).await?;
+  if let Err(error) = save_security_config(&conf_dir, &SecurityConfig::default()).await {
+    remove_staged_profiles(&staged).await;
+    return Err(error);
+  }
 
   {
     let mut s = app_state.0.lock().await;
@@ -1354,6 +1366,15 @@ mod migration_tests {
     assert!(migrate_encrypted_to_plain_in_dir(&dir, &[7; 32]).await.is_err());
     assert_eq!(fs::read_to_string(profile_enc_path(&dir, "first")).await.unwrap(), payload);
     assert_eq!(fs::read_to_string(profile_enc_path(&dir, "second")).await.unwrap(), "corrupt");
+    assert!(!fs::try_exists(profile_plain_path(&dir, "first")).await.unwrap());
+    fs::remove_dir_all(dir).await.unwrap();
+  }
+
+  #[tokio::test]
+  async fn corrupt_security_settings_fail_closed() {
+    let dir = test_dir();
+    fs::write(security_config_path(&dir), "corrupt").await.unwrap();
+    assert!(load_security_config(&dir).await.is_err());
     fs::remove_dir_all(dir).await.unwrap();
   }
 }
