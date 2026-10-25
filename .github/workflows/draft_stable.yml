@@ -76,6 +76,7 @@ jobs:
           else
             gh release create "$tag" --draft --target "$GITHUB_SHA" --title "$tag" --notes-file CHANGELOG.md
           fi
+          gh release edit "$tag" --target "$GITHUB_SHA" --notes-file CHANGELOG.md
           mapfile -t assets < <(find bundles -type f \( -name '*.deb' -o -name '*.AppImage' \))
           test "${#assets[@]}" -eq 4
           gh release upload "$tag" "${assets[@]}" --clobber
