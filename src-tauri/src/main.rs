@@ -548,13 +548,12 @@ async fn sync_connection_state(
 }
 
 async fn get_con_st(current: &str) -> ConnSt {
-  let output = Command::new("ip")
+  let mut command = Command::new("ip");
+  let output = command
     .args(["-br", "link", "show", "dev", current])
-    .output()
-    .await
-    .expect("ip command failed");
-  // check status code
-  if output.status.success() {
+    .kill_on_drop(true)
+    .output();
+  if matches!(timeout(Duration::from_secs(3), output).await, Ok(Ok(output)) if output.status.success()) {
     return ConnSt::Connected;
   }
   ConnSt::Disconnected
@@ -671,7 +670,13 @@ async fn exec_wg_profile(app_state: &AppSt, profile: &str) -> Result<(), AppErro
 }
 
 async fn get_pub_ip() -> Result<String, AppError> {
-  let payload = reqwest::get("https://httpbin.org/ip")
+  let client = reqwest::Client::builder()
+    .connect_timeout(Duration::from_secs(3))
+    .timeout(Duration::from_secs(5))
+    .build()
+    .map_err(|err| AppError::msg(err.to_string()))?;
+  let payload = client.get("https://httpbin.org/ip")
+    .send()
     .await
     .map_err(|err| AppError::msg(err.to_string()))?
     .json::<IpPayload>()
@@ -1213,10 +1218,16 @@ fn setup_appimage_gl_workarounds() {
   }
 }
 
-#[tokio::main]
-async fn main() {
+fn main() {
+  // Environment changes must happen before Tokio starts worker threads.
   #[cfg(target_os = "linux")]
   setup_appimage_gl_workarounds();
+  tokio::runtime::Runtime::new()
+    .expect("failed to initialize async runtime")
+    .block_on(run_app());
+}
+
+async fn run_app() {
   let app_state = init_app_st().await;
   let conn_st = app_state.0.lock().await.conn_st.clone();
   let managed_app_state = app_state.clone();
