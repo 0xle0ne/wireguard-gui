@@ -7,6 +7,7 @@ import { DeleteIcon, Edit, Rocket, Upload, Download } from 'lucide-react';
 import { toast } from 'sonner';
 
 import type { Profile, ImportResult, ExportResult } from '@/types/profile';
+import { orderProfiles } from '@/lib/profile-ordering';
 import {
   exportProfiles,
   importProfiles,
@@ -122,21 +123,10 @@ export function ProfileTable({ current, onConnect }: ProfileTableProps) {
     [current, onConnect],
   );
 
-  const tableData = React.useMemo(() => {
-    // sort by name
-    let sortedData = data;
-    if (debounceFilter) {
-      sortedData = (data || []).filter((p) =>
-        p.name.toLowerCase().includes(debounceFilter.toLowerCase()),
-      );
-    } else {
-      sortedData = (data || []).sort((a: any, b: any) =>
-        a.name.localeCompare(b.name),
-      );
-    }
-    // move current profile to the top
-    return sortedData.sort((a: any) => (a.name === current ? -1 : 1));
-  }, [current, data, debounceFilter]);
+  const tableData = React.useMemo(
+    () => orderProfiles(data, current, debounceFilter),
+    [current, data, debounceFilter],
+  );
 
   const editProfile = React.useMemo(
     () => tableData.find(({ name }) => name === editId) || null,
