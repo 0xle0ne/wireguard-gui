@@ -11,6 +11,6 @@ export function orderProfiles(
     .sort((a, b) => {
       if (a.name === current && b.name !== current) return -1;
       if (b.name === current && a.name !== current) return 1;
-      return a.name.localeCompare(b.name);
+      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
     });
 }

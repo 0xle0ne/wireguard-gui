@@ -26,3 +26,10 @@ test('filters case-insensitively while preserving alphabetical and current order
   assert.deepEqual(names(orderProfiles(profiles, 'delta', 'AL')), ['alpha']);
   assert.deepEqual(orderProfiles(profiles, 'delta', 'no-match'), []);
 });
+
+
+test('orders mixed-case names alphabetically', () => {
+  const mixedCase = ['Zulu', 'alpha', 'Bravo', 'charlie'].map((name) => ({ name, content: '' }));
+  assert.deepEqual(names(orderProfiles(mixedCase)), ['alpha', 'Bravo', 'charlie', 'Zulu']);
+  assert.deepEqual(names(orderProfiles(mixedCase, 'charlie')), ['charlie', 'alpha', 'Bravo', 'Zulu']);
+});
