@@ -332,4 +332,35 @@ Endpoint = 127.0.0.1:51820`;
       await tauriInvoke('reset_app_data');
     }
   });
+
+  it('removes profiles from the unlocked table after a confirmed app reset', async () => {
+    const resetProfile = `reset-${Date.now().toString().slice(-6)}`;
+    try {
+      await waitForAppReady();
+      await tauriInvoke('reset_app_data');
+      await tauriInvoke('create_profile', {
+        newProfile: { name: resetProfile, content: profileContent },
+      });
+      await browser.refresh();
+      await waitForAppReady();
+      await expect(await $(`p=${resetProfile}`)).toBeDisplayed();
+
+      await $('[data-testid="security-open"]').click();
+      await $('[data-testid="security-reset"]').click();
+      const confirmation = await $('[role="alertdialog"]');
+      await confirmation.waitForDisplayed();
+      await confirmation.$('button=Continue').click();
+      await waitForHidden('[role="alertdialog"]');
+      // Close security settings so the profile table can be inspected.
+      await browser.keys('Escape');
+      await browser.waitUntil(
+        async () => !(await $(`p=${resetProfile}`).isExisting()),
+        { timeout: 10000, timeoutMsg: 'Deleted profile remained in the table after reset' },
+      );
+      await expect(await $('[data-testid="profile-new"]')).toBeDisplayed();
+      await expect(await tauriInvoke('list_profile')).toEqual([]);
+    } finally {
+      await tauriInvoke('reset_app_data');
+    }
+  });
 });
