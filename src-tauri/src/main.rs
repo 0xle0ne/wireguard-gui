@@ -317,7 +317,7 @@ async fn migrate_plain_to_encrypted_in_dir(conf_dir: &str, key: &[u8; 32]) -> Re
     fs::write(profile_enc_path(conf_dir, &name), encrypted)
       .await
       .map_err(|e| AppError::coded("profile_write_failed", format!("Failed to write profile: {e}")))?;
-    let _ = fs::remove_file(profile_plain_path(conf_dir, &name)).await;
+
   }
   Ok(())
 }
@@ -333,7 +333,19 @@ async fn migrate_encrypted_to_plain_in_dir(conf_dir: &str, key: &[u8; 32]) -> Re
     fs::write(profile_plain_path(conf_dir, &name), plain)
       .await
       .map_err(|e| AppError::coded("profile_write_failed", format!("Failed to write profile: {e}")))?;
-    let _ = fs::remove_file(profile_enc_path(conf_dir, &name)).await;
+
+  }
+  Ok(())
+}
+
+// Only remove old representations after the security configuration was committed.
+// Failed conversions leave all originals intact, so retrying never loses a profile.
+async fn remove_migrated_sources(conf_dir: &str, encrypted: bool) -> Result<(), AppError> {
+  for name in list_profile_names(conf_dir, encrypted).await? {
+    let path = if encrypted { profile_enc_path(conf_dir, &name) } else { profile_plain_path(conf_dir, &name) };
+    fs::remove_file(path).await.map_err(|e| AppError::coded(
+      "profile_cleanup_failed", format!("Encryption changed, but old profile could not be removed: {e}"),
+    ))?;
   }
   Ok(())
 }
@@ -710,19 +722,8 @@ async fn enable_profile_encryption(
     .map_err(|e| AppError::coded("invalid_pin", e))?;
 
   migrate_plain_to_encrypted_in_dir(&conf_dir, &key).await?;
-  if let Err(error) = save_security_config(&conf_dir, &config).await {
-    let rollback = migrate_encrypted_to_plain_in_dir(&conf_dir, &key).await;
-    return Err(match rollback {
-      Ok(_) => error,
-      Err(rollback_error) => AppError::coded(
-        "security_setup_failed",
-        format!(
-          "Failed to save security config: {}. Rollback also failed: {}",
-          error.message, rollback_error.message
-        ),
-      ),
-    });
-  }
+  // Keep every source profile until both migration and its key are durable.
+  save_security_config(&conf_dir, &config).await?;
 
   {
     let mut s = app_state.0.lock().await;
@@ -730,6 +731,7 @@ async fn enable_profile_encryption(
     s.is_unlocked = true;
     s.unlock_key = Some(key);
   }
+  remove_migrated_sources(&conf_dir, false).await?;
   Ok(())
 }
 
@@ -755,19 +757,7 @@ async fn disable_profile_encryption(
     .map_err(|_| AppError::coded("pin_incorrect", "Incorrect PIN"))?;
 
   migrate_encrypted_to_plain_in_dir(&conf_dir, &key).await?;
-  if let Err(error) = save_security_config(&conf_dir, &SecurityConfig::default()).await {
-    let rollback = migrate_plain_to_encrypted_in_dir(&conf_dir, &key).await;
-    return Err(match rollback {
-      Ok(_) => error,
-      Err(rollback_error) => AppError::coded(
-        "security_disable_failed",
-        format!(
-          "Failed to save disabled security config: {}. Rollback also failed: {}",
-          error.message, rollback_error.message
-        ),
-      ),
-    });
-  }
+  save_security_config(&conf_dir, &SecurityConfig::default()).await?;
 
   {
     let mut s = app_state.0.lock().await;
@@ -775,7 +765,7 @@ async fn disable_profile_encryption(
     s.is_unlocked = true;
     s.unlock_key = None;
   }
-
+  remove_migrated_sources(&conf_dir, true).await?;
   Ok(())
 }
 
@@ -1290,4 +1280,40 @@ async fn main() {
     .build(tauri::generate_context!())
     .expect("error while running tauri application")
     .run(|_, _| {});
+}
+
+#[cfg(test)]
+mod migration_tests {
+  use super::*;
+
+  fn test_dir() -> String {
+    let path = std::env::temp_dir().join(format!("wg-migration-{}-{}", std::process::id(), rand::random::<u64>()));
+    std::fs::create_dir_all(path.join("profiles")).unwrap();
+    path.to_string_lossy().into_owned()
+  }
+
+  #[tokio::test]
+  async fn failed_encryption_preserves_every_plaintext_source() {
+    let dir = test_dir();
+    fs::write(profile_plain_path(&dir, "first"), "private key one").await.unwrap();
+    fs::write(profile_plain_path(&dir, "second"), "private key two").await.unwrap();
+    // A destination directory forces a write failure regardless of directory order.
+    fs::create_dir(profile_enc_path(&dir, "second")).await.unwrap();
+    assert!(migrate_plain_to_encrypted_in_dir(&dir, &[7; 32]).await.is_err());
+    assert_eq!(fs::read_to_string(profile_plain_path(&dir, "first")).await.unwrap(), "private key one");
+    assert_eq!(fs::read_to_string(profile_plain_path(&dir, "second")).await.unwrap(), "private key two");
+    fs::remove_dir_all(dir).await.unwrap();
+  }
+
+  #[tokio::test]
+  async fn failed_decryption_preserves_every_encrypted_source() {
+    let dir = test_dir();
+    let payload = encrypt_value("private key", &[7; 32]).unwrap();
+    fs::write(profile_enc_path(&dir, "first"), &payload).await.unwrap();
+    fs::write(profile_enc_path(&dir, "second"), "corrupt").await.unwrap();
+    assert!(migrate_encrypted_to_plain_in_dir(&dir, &[7; 32]).await.is_err());
+    assert_eq!(fs::read_to_string(profile_enc_path(&dir, "first")).await.unwrap(), payload);
+    assert_eq!(fs::read_to_string(profile_enc_path(&dir, "second")).await.unwrap(), "corrupt");
+    fs::remove_dir_all(dir).await.unwrap();
+  }
 }
