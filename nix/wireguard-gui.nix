@@ -61,6 +61,10 @@ rustPlatform.buildRustPackage rec {
 
   doCheck = false;
 
+  preFixup = lib.optionalString stdenv.hostPlatform.isLinux ''
+    gappsWrapperArgs+=(--prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath [ libayatana-appindicator ]}")
+  '';
+
   postInstall = lib.optionalString stdenv.hostPlatform.isDarwin ''
     makeWrapper $out/Applications/wireguard-gui.app/Contents/MacOS/wireguard-gui $out/bin/wireguard-gui
   '';
