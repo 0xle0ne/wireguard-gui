@@ -338,12 +338,14 @@ Endpoint = 127.0.0.1:51820`;
     try {
       await waitForAppReady();
       await tauriInvoke('reset_app_data');
-      await tauriInvoke('create_profile', {
-        newProfile: { name: resetProfile, content: profileContent },
+      await step('create reset candidate through profile form', async () => {
+        await $('[data-testid="profile-new"]').click();
+        await $('[data-testid="profile-name"]').setValue(resetProfile);
+        await $('[data-testid="profile-content"]').setValue(profileContent);
+        await $('[data-testid="profile-save"]').click();
+        await waitForHidden('[role="dialog"]');
+        await expect(await $(`p=${resetProfile}`)).toBeDisplayed();
       });
-      await browser.refresh();
-      await waitForAppReady();
-      await expect(await $(`p=${resetProfile}`)).toBeDisplayed();
 
       await $('[data-testid="security-open"]').click();
       await $('[data-testid="security-reset"]').click();
