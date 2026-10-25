@@ -302,14 +302,20 @@ async fn list_profile_names(conf_dir: &str, encrypted: bool) -> Result<Vec<Strin
     PROFILE_EXT_PLAIN
   };
   let mut names = Vec::new();
-  while let Ok(Some(dir)) = dirs.next_entry().await {
-    let path = dir.path();
-    let file_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
-    if dir.file_type().await.map(|kind| kind.is_file()).unwrap_or(false)
-      && let Some(name) = file_name.strip_suffix(ext)
-      && is_valid_profile_name(name) {
-      names.push(name.to_string());
+  while let Some(dir) = dirs.next_entry().await.map_err(|error| AppError::coded(
+    "profile_dir_read_failed", format!("Failed to enumerate profiles: {error}"),
+  ))? {
+    let file_name = dir.file_name().to_string_lossy().to_string();
+    let Some(name) = file_name.strip_suffix(ext) else { continue; };
+    let kind = dir.file_type().await.map_err(|error| AppError::coded(
+      "profile_dir_read_failed", format!("Failed to inspect profile {file_name}: {error}"),
+    ))?;
+    if !kind.is_file() || !is_valid_profile_name(name) {
+      return Err(AppError::coded("invalid_stored_profile", format!(
+        "Cannot safely access stored profile {file_name}. Rename it to 1-15 ASCII letters, digits, _, -, ., or =, and ensure it is a regular file.",
+      )));
     }
+    names.push(name.to_string());
   }
   Ok(names)
 }
@@ -1379,6 +1385,19 @@ mod migration_tests {
     assert_eq!(fs::read_to_string(profile_enc_path(&dir, "first")).await.unwrap(), payload);
     assert_eq!(fs::read_to_string(profile_enc_path(&dir, "second")).await.unwrap(), "corrupt");
     assert!(!fs::try_exists(profile_plain_path(&dir, "first")).await.unwrap());
+    fs::remove_dir_all(dir).await.unwrap();
+  }
+
+  #[tokio::test]
+  async fn migration_rejects_legacy_names_instead_of_silently_leaving_plaintext() {
+    let dir = test_dir();
+    let path = profile_plain_path(&dir, "café");
+    fs::write(&path, "private key").await.unwrap();
+    let error = migrate_plain_to_encrypted_in_dir(&dir, &[7; 32]).await.unwrap_err();
+    assert_eq!(error.code.as_deref(), Some("invalid_stored_profile"));
+    assert!(error.message.contains("café"));
+    assert_eq!(fs::read_to_string(path).await.unwrap(), "private key");
+    assert!(!fs::try_exists(profile_enc_path(&dir, "café")).await.unwrap());
     fs::remove_dir_all(dir).await.unwrap();
   }
 
