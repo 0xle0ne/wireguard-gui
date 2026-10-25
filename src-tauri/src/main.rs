@@ -1359,11 +1359,13 @@ mod migration_tests {
     let dir = test_dir();
     fs::write(profile_plain_path(&dir, "first"), "private key one").await.unwrap();
     fs::write(profile_plain_path(&dir, "second"), "private key two").await.unwrap();
-    // A destination directory forces a write failure regardless of directory order.
-    fs::create_dir(profile_enc_path(&dir, "second")).await.unwrap();
+    // Surviving ciphertext from an interrupted migration must never be overwritten.
+    fs::write(profile_enc_path(&dir, "second"), "existing ciphertext").await.unwrap();
     assert!(migrate_plain_to_encrypted_in_dir(&dir, &[7; 32]).await.is_err());
     assert_eq!(fs::read_to_string(profile_plain_path(&dir, "first")).await.unwrap(), "private key one");
     assert_eq!(fs::read_to_string(profile_plain_path(&dir, "second")).await.unwrap(), "private key two");
+    assert_eq!(fs::read_to_string(profile_enc_path(&dir, "second")).await.unwrap(), "existing ciphertext");
+    assert!(!fs::try_exists(profile_enc_path(&dir, "first")).await.unwrap());
     fs::remove_dir_all(dir).await.unwrap();
   }
 
