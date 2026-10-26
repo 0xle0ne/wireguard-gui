@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.13] - Unreleased
+
+### Security
+
+- Update ctutils, rustls-webpki and webpki-root-certs to patched compatible releases by [Melroy van den Berg](https://github.com/melroy89).
+
+### Fixed
+
+- Require confirmation before resetting data from the locked screen and clear cached profiles after reset by [Melroy van den Berg](https://github.com/melroy89).
+- Preserve original profiles when encryption changes fail, validate profile paths, and restrict private-key file permissions by [Melroy van den Berg](https://github.com/melroy89).
+- Report connection and reset failures instead of claiming success, and leave unrelated NetworkManager connections alone by [Melroy van den Berg](https://github.com/melroy89).
+- Bound startup network probes and initialize AppImage graphics settings before starting background threads by [Melroy van den Berg](https://github.com/melroy89).
+- Restore Linux build and draft-release workflows and declare Debian VPN runtime dependencies by [Melroy van den Berg](https://github.com/melroy89).
+- Update Nix packaging for Tauri 2 and provide the documented production build command by [Melroy van den Berg](https://github.com/melroy89).
+- Repair security E2E type checks and update compatible WebDriver dependencies to address audit findings by [Melroy van den Berg](https://github.com/melroy89).
+- Keep profile sorting stable and case-insensitive without mutating state by [Melroy van den Berg](https://github.com/melroy89).
+- Remove an unused Google Fonts download so frontend builds work offline by [Melroy van den Berg](https://github.com/melroy89).
+
 ## [0.1.12] - 2026-07-04
 
 ### Added
