@@ -179,7 +179,7 @@ Endpoint = 127.0.0.1:51820`;
         await browser.waitUntil(
           async () => {
             const profileCell = await $(`p=${profileName}`);
-            return profileCell.isExisting() && profileCell.isDisplayed();
+            return (await profileCell.isExisting()) && profileCell.isDisplayed();
           },
           {
             timeout: 20000,
