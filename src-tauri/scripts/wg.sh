@@ -31,7 +31,7 @@ if [[ -z "$profile" ]]; then
   exit 2
 fi
 
-if [[ "$wg_action" != "toggle" && "$wg_action" != "disconnect" ]]; then
+if [[ "$wg_action" != "toggle" && "$wg_action" != "connect" && "$wg_action" != "disconnect" ]]; then
   fail "Invalid WG_ACTION: $wg_action" 2
 fi
 
@@ -60,11 +60,18 @@ if has_nmcli; then
 
   conn_name="wg-gui-${profile}"
 
-  # Check if connection is active and disconnect it
-  if run_with_timeout 10 nmcli -t -f NAME connection show --active 2>/dev/null | grep -Fxq "$conn_name"; then
+  # A failed status query must never be treated as a disconnected tunnel.
+  active_connections=$(run_with_timeout 10 nmcli -t -f NAME connection show --active) || {
+    fail "Failed to query active NetworkManager connections"
+  }
+  if grep -Fxq -- "$conn_name" <<< "$active_connections"; then
+    if [[ "$wg_action" == "connect" ]]; then
+      echo "Connection $conn_name already connected"
+      exit 0
+    fi
     echo "Disconnecting $conn_name..."
     run_with_timeout 15 nmcli connection down "$conn_name" 2>&1 || {
-      echo "Warning: Failed to disconnect $conn_name" >&2
+      fail "Failed to disconnect $conn_name"
     }
     echo "Connection $conn_name brought down"
     exit 0
@@ -80,18 +87,13 @@ if has_nmcli; then
   fi
 
   # Clean up any old connections with the same name (handles renames/updates)
-  if run_with_timeout 10 nmcli -t -f NAME connection show 2>/dev/null | grep -Fxq "$conn_name"; then
+  existing_connections=$(run_with_timeout 10 nmcli -t -f NAME connection show) || {
+    fail "Failed to query NetworkManager connections"
+  }
+  if grep -Fxq -- "$conn_name" <<< "$existing_connections"; then
     echo "Removing old connection $conn_name..."
     run_with_timeout 10 nmcli connection delete "$conn_name" 2>&1 || {
-      echo "Warning: Failed to delete old connection $conn_name" >&2
-    }
-  fi
-
-  # Also clean up connection with the profile name
-  if run_with_timeout 10 nmcli -t -f NAME connection show 2>/dev/null | grep -Fxq "$profile"; then
-    echo "Removing old connection $profile..."
-    run_with_timeout 10 nmcli connection delete "$profile" 2>&1 || {
-      echo "Warning: Failed to delete old connection $profile" >&2
+      fail "Failed to delete old connection $conn_name"
     }
   fi
 
@@ -103,32 +105,21 @@ if has_nmcli; then
     exit 10
   fi
 
-  # Extract the imported connection name
-  imported_name=$(printf '%s\n' "$import_output" | sed -n "s/.*Connection '\([^']*\)'.*/\1/p" | head -n 1)
-
-  if [[ -z "$imported_name" ]]; then
-    echo "Failed to extract imported connection name from: $import_output" >&2
-    exit 10
+  # Connection IDs are not unique. Use the imported UUID so a duplicate
+  # user-created connection name can never be modified or activated instead.
+  imported_uuid=$(printf '%s\n' "$import_output" | sed -nE 's/.*\(([[:xdigit:]]{8}(-[[:xdigit:]]{4}){3}-[[:xdigit:]]{12})\).*/\1/p' | head -n 1)
+  if [[ -z "$imported_uuid" ]]; then
+    fail "Failed to extract imported connection UUID from: $import_output" 10
   fi
 
-  # Rename to our standard naming convention if needed
-  if [[ "$imported_name" != "$conn_name" ]]; then
-    echo "Renaming connection from $imported_name to $conn_name..."
-    if ! run_with_timeout 10 nmcli connection modify "$imported_name" connection.id "$conn_name" 2>&1; then
-      echo "Warning: Failed to rename connection" >&2
-    fi
+  echo "Configuring imported connection $imported_uuid as $conn_name..."
+  if ! run_with_timeout 10 nmcli connection modify uuid "$imported_uuid" connection.id "$conn_name" connection.autoconnect no 2>&1; then
+    fail "Failed to configure imported connection" 10
   fi
 
-  # Keep app-managed connections manual; do not auto-connect on boot.
-  if ! run_with_timeout 10 nmcli connection modify "$conn_name" connection.autoconnect no 2>&1; then
-    echo "Warning: Failed to disable autoconnect for $conn_name" >&2
-  fi
-
-  # Bring up the connection
   echo "Bringing up connection $conn_name..."
-  if ! run_with_timeout 20 nmcli connection up "$conn_name" 2>&1; then
-    echo "Failed to bring up connection $conn_name" >&2
-    exit 11
+  if ! run_with_timeout 20 nmcli connection up uuid "$imported_uuid" 2>&1; then
+    fail "Failed to bring up connection $conn_name" 11
   fi
   echo "Connection $conn_name brought up successfully"
   exit 0
@@ -161,6 +152,10 @@ fi
 
 # Toggle the connection
 if ip link show dev "$profile" >/dev/null 2>&1; then
+  if [[ "$wg_action" == "connect" ]]; then
+    echo "Interface $profile already connected"
+    exit 0
+  fi
   # Interface exists, bring it down
   echo "Bringing down interface $profile..."
   wg-quick down "$profile"
@@ -176,7 +171,8 @@ else
   fi
 
   # Copy profile to system wireguard directory
-  cp -f "$user_conf" "$profile_path"
+  install -d -m 700 /etc/wireguard
+  install -m 600 "$user_conf" "$profile_path"
 
   # Interface doesn't exist, bring it up
   echo "Bringing up interface $profile..."

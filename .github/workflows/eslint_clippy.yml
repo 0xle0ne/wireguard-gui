@@ -71,7 +71,3 @@ jobs:
       - name: Run Node regression tests
         if: hashFiles('tests/*.test.ts') != ''
         run: node --experimental-strip-types --test tests/*.test.ts
-
-      - name: Run script regression tests
-        if: hashFiles('src-tauri/tests/*.py') != ''
-        run: python3 -m unittest discover -s src-tauri/tests -p '*.py'

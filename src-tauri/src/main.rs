@@ -460,7 +460,7 @@ async fn get_active_nm_profile(current_hint: Option<&str>, conf_dir: &str) -> Op
 
   if let Some(current) = current_hint {
     let prefixed = format!("{NM_CONN_PREFIX}{current}");
-    if active_wireguard_names.iter().any(|name| name == current || name == &prefixed) {
+    if active_wireguard_names.iter().any(|name| name == &prefixed) {
       return Some(current.to_owned());
     }
     return None;
@@ -639,8 +639,9 @@ async fn exec_wg_action(app_state: &AppSt, profile: &str, action: &str) -> Resul
 
   println!("[wg-gui] exec_wg: executing wg.sh for profile {} with action {}", profile, action);
   let res = timeout(
-    Duration::from_secs(20),
+    Duration::from_secs(180),
     Command::new("bash")
+      .kill_on_drop(true)
       .args([format!("{conf_dir}/wg.sh")])
       .envs(envs)
       .output(),
@@ -662,7 +663,7 @@ async fn exec_wg_action(app_state: &AppSt, profile: &str, action: &str) -> Resul
     String::from_utf8_lossy(&res.stderr)
   );
 
-  if res.status.code().unwrap_or_default() != 0 {
+  if !res.status.success() {
     let error_msg = String::from_utf8(res.stderr).unwrap_or_default().trim().to_owned();
     let exit_code = res.status.code().unwrap_or(-1);
     let lower = error_msg.to_ascii_lowercase();
@@ -696,7 +697,7 @@ async fn exec_wg_action(app_state: &AppSt, profile: &str, action: &str) -> Resul
 }
 
 async fn exec_wg(app_state: &AppSt, profile: &str) -> Result<(), AppError> {
-  exec_wg_action(app_state, profile, "toggle").await
+  exec_wg_action(app_state, profile, "connect").await
 }
 
 async fn exec_wg_disconnect(app_state: &AppSt, profile: &str) -> Result<(), AppError> {
@@ -858,15 +859,20 @@ async fn reset_app_data(app_state: State<'_, AppSt>) -> Result<(), AppError> {
   };
 
   if let Some(profile_name) = current {
-    let _ = exec_wg_disconnect(&app_state, &profile_name).await;
+    exec_wg_disconnect(&app_state, &profile_name).await?;
   }
 
-  let _ = fs::remove_dir_all(&conf_dir).await;
+  match fs::remove_dir_all(&conf_dir).await {
+    Ok(()) => {},
+    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {},
+    Err(error) => return Err(AppError::coded("reset_failed", format!("Failed to remove app data: {error}"))),
+  }
   create_scripts(&conf_dir).await;
 
   {
     let mut s = app_state.0.lock().await;
     s.current = None;
+    s.profiles.clear();
     s.pub_ip = None;
     s.conn_st = ConnSt::Disconnected;
     s.encryption_enabled = false;
@@ -934,6 +940,9 @@ async fn connect_profile(
   let _ = ensure_unlocked_if_needed(&app_state).await?;
   let s = app_state.0.lock().await.clone();
   let conf_dir = s.conf_dir.clone();
+  if !profile_exists(&conf_dir, &profile, s.encryption_enabled).await {
+    return Err(AppError::coded("profile_not_found", "Profile does not exist"));
+  }
   let current = s.current;
   if let Some(current) = current {
     exec_wg_disconnect(&app_state, &current).await?;
