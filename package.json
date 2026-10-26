@@ -2,6 +2,7 @@
   "name": "wireguard-gui",
   "scripts": {
     "dev": "tauri dev",
+    "build": "tauri build --no-bundle",
     "tauri": "tauri",
     "lint": "eslint .",
     "next": "next",
