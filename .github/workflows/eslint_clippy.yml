@@ -8,7 +8,7 @@ jobs:
   eslint_and_clippy:
     strategy:
       fail-fast: true
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository code
@@ -46,12 +46,12 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libappindicator3-dev librsvg2-dev libudev-dev patchelf \
-            libwebkit2gtk-4.1-0=2.44.0-2 \
-            libwebkit2gtk-4.1-dev=2.44.0-2 \
-            libjavascriptcoregtk-4.1-0=2.44.0-2 \
-            libjavascriptcoregtk-4.1-dev=2.44.0-2 \
-            gir1.2-javascriptcoregtk-4.1=2.44.0-2 \
-            gir1.2-webkit2-4.1=2.44.0-2
+            libwebkit2gtk-4.1-0 \
+            libwebkit2gtk-4.1-dev \
+            libjavascriptcoregtk-4.1-0 \
+            libjavascriptcoregtk-4.1-dev \
+            gir1.2-javascriptcoregtk-4.1 \
+            gir1.2-webkit2-4.1
 
       - name: Create empty 'out' directory for Tauri generate context
         run: mkdir out
@@ -64,3 +64,14 @@ jobs:
 
       - name: Run Clippy
         run: npm run clippy
+
+      - name: Run Rust regression tests
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml
+
+      - name: Run Node regression tests
+        if: hashFiles('tests/*.test.ts') != ''
+        run: node --experimental-strip-types --test tests/*.test.ts
+
+      - name: Run script regression tests
+        if: hashFiles('src-tauri/tests/*.py') != ''
+        run: python3 -m unittest discover -s src-tauri/tests -p '*.py'
