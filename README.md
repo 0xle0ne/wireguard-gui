@@ -59,8 +59,13 @@ I wanted to make an application with nextauri since a while, so i took this oppo
 In order to work properly, the application needs the following dependencies:
 
 ```sh
-sudo apt-get install javascriptcoregtk-4.1 libsoup-3.0 webkit2gtk-4.1 libayatana-appindicator3-dev librsvg2-dev wireguard resolvconf -y
+sudo apt-get install libwebkit2gtk-4.1-0 libayatana-appindicator3-1 iproute2 wireguard-tools pkexec resolvconf -y
 ```
+
+The `.deb` package installs its required dependencies automatically. AppImage users
+need to install them on the host. NetworkManager is recommended; when available,
+the application uses `nmcli` to manage connections. Otherwise it uses `wg-quick`
+and requests administrator authorization through `pkexec`.
 
 ## Installation
 
@@ -73,6 +78,17 @@ Release are currently available as .deb package for Debian/Ubuntu or Appimage fo
 ```sh
 yay -S wireguard-gui-bin
 ```
+
+#### Install with Nix (Linux):
+
+```sh
+nix run github:0xle0ne/wireguard-gui
+```
+
+To build a local checkout, run `nix build`. Enable NetworkManager on the host
+(for NixOS, `networking.networkmanager.enable = true;`) to manage WireGuard
+connections through `nmcli`. Host networking and authorization services are
+required even when the application itself is installed with Nix.
 
 ## Developing
 

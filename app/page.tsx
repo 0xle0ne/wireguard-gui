@@ -32,6 +32,7 @@ const INACTIVITY_LOCK_MS =
 
 export default function Index() {
   const [showSplash, setShowSplash] = useState(true);
+  const [profileRevision, setProfileRevision] = useState(0);
   const [state, , , , fetchState] = useAppState();
   const [appLoader, setAppLoader] = useAppLoader();
   const [appVersion, setAppVersion] = useState<string | null>(null);
@@ -107,11 +108,16 @@ export default function Index() {
     disconnect(onConnectionFinish(), onError);
   }, [state, setAppLoader, onConnectionFinish, onError]);
 
+  const onResetComplete = useCallback(() => {
+    setProfileRevision((revision) => revision + 1);
+    fetchState();
+  }, [fetchState]);
+
   const onResetAppData = useCallback(() => {
     resetAppData(
       () => {
         toast.success('App data reset complete');
-        fetchState();
+        onResetComplete();
       },
       (commandError) => {
         toast.error('Failed to reset app', {
@@ -119,7 +125,7 @@ export default function Index() {
         });
       },
     );
-  }, [fetchState]);
+  }, [onResetComplete]);
 
   useEffect(() => {
     if (!state?.encryption_enabled || !state?.is_unlocked) {
@@ -190,6 +196,7 @@ export default function Index() {
               encryptionEnabled={state?.encryption_enabled}
               isUnlocked={state?.is_unlocked}
               onStateChanged={fetchState}
+              onResetComplete={onResetComplete}
             />
             <Button
               disabled={state?.conn_st !== 'Connected'}
@@ -214,7 +221,11 @@ export default function Index() {
           <UnlockPanel onUnlocked={fetchState} onReset={onResetAppData} />
         ) : (
           <Suspense>
-            <ProfileTable current={state?.current} onConnect={onConnect} />
+            <ProfileTable
+              key={profileRevision}
+              current={state?.current}
+              onConnect={onConnect}
+            />
           </Suspense>
         )}
       </div>

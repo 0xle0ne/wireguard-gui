@@ -179,7 +179,7 @@ Endpoint = 127.0.0.1:51820`;
         await browser.waitUntil(
           async () => {
             const profileCell = await $(`p=${profileName}`);
-            return profileCell.isExisting() && profileCell.isDisplayed();
+            return (await profileCell.isExisting()) && profileCell.isDisplayed();
           },
           {
             timeout: 20000,
@@ -235,8 +235,28 @@ Endpoint = 127.0.0.1:51820`;
         await expect(unlockPanel).toBeDisplayed();
       });
 
-      await step('reset app from lock panel', async () => {
-        await tauriInvoke('reset_app_data');
+      await step('cancel reset from lock panel preserves data', async () => {
+        await $('[data-testid="unlock-reset"]').click();
+        const confirmation = await $('[role="alertdialog"]');
+        await confirmation.waitForDisplayed();
+        await expect(await confirmation.getText()).toContain('Reset app data?');
+        await confirmation.$('button=Cancel').click();
+        await waitForHidden('[role="alertdialog"]');
+
+        const state = await tauriInvoke<{
+          encryption_enabled?: boolean;
+          is_unlocked?: boolean;
+        }>('get_state');
+        await expect(Boolean(state.encryption_enabled)).toBe(true);
+        await expect(Boolean(state.is_unlocked)).toBe(false);
+        await expect(await $('[data-testid="unlock-panel"]')).toBeDisplayed();
+      });
+
+      await step('reset app from lock panel after confirmation', async () => {
+        await $('[data-testid="unlock-reset"]').click();
+        const confirmation = await $('[role="alertdialog"]');
+        await confirmation.waitForDisplayed();
+        await confirmation.$('button=Continue').click();
         await browser.waitUntil(
           async () => {
             const state = await tauriInvoke<{
@@ -329,6 +349,39 @@ Endpoint = 127.0.0.1:51820`;
       });
     } finally {
       await setKeepAlive(false);
+      await tauriInvoke('reset_app_data');
+    }
+  });
+
+  it('removes profiles from the unlocked table after a confirmed app reset', async () => {
+    const resetProfile = `reset-${Date.now().toString().slice(-6)}`;
+    try {
+      await waitForAppReady();
+      await tauriInvoke('reset_app_data');
+      await step('create reset candidate through profile form', async () => {
+        await $('[data-testid="profile-new"]').click();
+        await $('[data-testid="profile-name"]').setValue(resetProfile);
+        await $('[data-testid="profile-content"]').setValue(profileContent);
+        await $('[data-testid="profile-save"]').click();
+        await waitForHidden('[role="dialog"]');
+        await expect(await $(`p=${resetProfile}`)).toBeDisplayed();
+      });
+
+      await $('[data-testid="security-open"]').click();
+      await $('[data-testid="security-reset"]').click();
+      const confirmation = await $('[role="alertdialog"]');
+      await confirmation.waitForDisplayed();
+      await confirmation.$('button=Continue').click();
+      await waitForHidden('[role="alertdialog"]');
+      // Close security settings so the profile table can be inspected.
+      await browser.keys('Escape');
+      await browser.waitUntil(
+        async () => !(await $(`p=${resetProfile}`).isExisting()),
+        { timeout: 10000, timeoutMsg: 'Deleted profile remained in the table after reset' },
+      );
+      await expect(await $('[data-testid="profile-new"]')).toBeDisplayed();
+      await expect(await tauriInvoke('list_profile')).toEqual([]);
+    } finally {
       await tauriInvoke('reset_app_data');
     }
   });
