@@ -251,6 +251,7 @@ export interface UnlockPanelProps {
 
 export function UnlockPanel({ onUnlocked, onReset }: UnlockPanelProps) {
   const [pin, setPin] = React.useState('');
+  const [confirmResetOpen, setConfirmResetOpen] = React.useState(false);
 
   const onUnlock = React.useCallback(() => {
     if (!isPinFormatValid(pin)) {
@@ -273,6 +274,13 @@ export function UnlockPanel({ onUnlocked, onReset }: UnlockPanelProps) {
 
   return (
     <div className="rounded-lg border p-6" data-testid="unlock-panel">
+      <AlertConfirm
+        isOpen={confirmResetOpen}
+        setOpen={setConfirmResetOpen}
+        onConfirm={onReset}
+        title="Reset app data?"
+        description="This will permanently remove all local profiles and security settings. This cannot be undone."
+      />
       <h2 className="mb-2 text-lg font-semibold">Profiles are locked</h2>
       <p className="mb-4 text-sm text-muted-foreground">
         Enter your 4-digit PIN to unlock encrypted profiles.
@@ -301,7 +309,7 @@ export function UnlockPanel({ onUnlocked, onReset }: UnlockPanelProps) {
         type="button"
         variant="destructive"
         className="mt-4 w-full"
-        onClick={onReset}
+        onClick={() => setConfirmResetOpen(true)}
         data-testid="unlock-reset"
       >
         Reset app data

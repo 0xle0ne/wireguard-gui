@@ -235,8 +235,28 @@ Endpoint = 127.0.0.1:51820`;
         await expect(unlockPanel).toBeDisplayed();
       });
 
-      await step('reset app from lock panel', async () => {
-        await tauriInvoke('reset_app_data');
+      await step('cancel reset from lock panel preserves data', async () => {
+        await $('[data-testid="unlock-reset"]').click();
+        const confirmation = await $('[role="alertdialog"]');
+        await confirmation.waitForDisplayed();
+        await expect(await confirmation.getText()).toContain('Reset app data?');
+        await confirmation.$('button=Cancel').click();
+        await waitForHidden('[role="alertdialog"]');
+
+        const state = await tauriInvoke<{
+          encryption_enabled?: boolean;
+          is_unlocked?: boolean;
+        }>('get_state');
+        await expect(Boolean(state.encryption_enabled)).toBe(true);
+        await expect(Boolean(state.is_unlocked)).toBe(false);
+        await expect(await $('[data-testid="unlock-panel"]')).toBeDisplayed();
+      });
+
+      await step('reset app from lock panel after confirmation', async () => {
+        await $('[data-testid="unlock-reset"]').click();
+        const confirmation = await $('[role="alertdialog"]');
+        await confirmation.waitForDisplayed();
+        await confirmation.$('button=Continue').click();
         await browser.waitUntil(
           async () => {
             const state = await tauriInvoke<{
