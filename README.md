@@ -59,8 +59,13 @@ I wanted to make an application with nextauri since a while, so i took this oppo
 In order to work properly, the application needs the following dependencies:
 
 ```sh
-sudo apt-get install javascriptcoregtk-4.1 libsoup-3.0 webkit2gtk-4.1 libayatana-appindicator3-dev librsvg2-dev wireguard resolvconf -y
+sudo apt-get install libwebkit2gtk-4.1-0 libayatana-appindicator3-1 iproute2 wireguard-tools pkexec resolvconf -y
 ```
+
+The `.deb` package installs its required dependencies automatically. AppImage users
+need to install them on the host. NetworkManager is recommended; when available,
+the application uses `nmcli` to manage connections. Otherwise it uses `wg-quick`
+and requests administrator authorization through `pkexec`.
 
 ## Installation
 

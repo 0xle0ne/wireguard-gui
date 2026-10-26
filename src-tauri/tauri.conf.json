@@ -35,7 +35,20 @@
     "resources": [],
     "shortDescription": "",
     "linux": {
-      "deb": {}
+      "deb": {
+        "depends": [
+          "bash",
+          "coreutils",
+          "grep",
+          "iproute2",
+          "wireguard-tools",
+          "pkexec",
+          "resolvconf"
+        ],
+        "recommends": [
+          "network-manager"
+        ]
+      }
     }
   },
   "productName": "wireguard-gui",
