@@ -3,16 +3,16 @@
   stdenv,
   rustPlatform,
   fetchNpmDeps,
-  cargo-tauri_1,
-  darwin,
+  cargo-tauri,
   glib-networking,
-  libsoup,
-  nodejs_22,
+  libsoup_3,
+  nodejs_24,
   npmHooks,
   libiconv,
+  libayatana-appindicator,
   openssl,
   pkg-config,
-  webkitgtk,
+  webkitgtk_4_1,
   wrapGAppsHook3,
   makeBinaryWrapper,
 }:
@@ -28,11 +28,10 @@ rustPlatform.buildRustPackage rec {
 
   npmDeps = fetchNpmDeps {
     inherit pname version src;
-    hash = "sha256-5nteidw81/EUc3TJT3WFC+m3pN/ZuUeepYKdvn/VwzA=";
+    hash = "sha256-1CZuNkvMINuWpEBCuR/St8BzysydRvD5DAyHL6K6wHw=";
   };
 
   cargoRoot = "src-tauri";
-  useFetchCargoVendor = true;
 
   cargoLock.lockFile = "${src}/src-tauri/Cargo.lock";
 
@@ -40,9 +39,9 @@ rustPlatform.buildRustPackage rec {
 
   nativeBuildInputs =
     [
-      nodejs_22
+      nodejs_24
       npmHooks.npmConfigHook
-      cargo-tauri_1.hook
+      cargo-tauri.hook
       pkg-config
     ]
     ++ lib.optionals stdenv.hostPlatform.isLinux [ wrapGAppsHook3 ]
@@ -53,22 +52,18 @@ rustPlatform.buildRustPackage rec {
       openssl
       libiconv
     ]
-    ++ lib.optionals stdenv.isLinux [
+    ++ lib.optionals stdenv.hostPlatform.isLinux [
+      libayatana-appindicator
       glib-networking # Most Tauri apps need networking
-      libsoup
-      webkitgtk
-    ]
-    ++ lib.optionals stdenv.isDarwin (
-      with darwin.apple_sdk.frameworks;
-      [
-        AppKit
-        CoreServices
-        Security
-        WebKit
-      ]
-    );
+      libsoup_3
+      webkitgtk_4_1
+    ];
 
   doCheck = false;
+
+  preFixup = lib.optionalString stdenv.hostPlatform.isLinux ''
+    gappsWrapperArgs+=(--prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath [ libayatana-appindicator ]}")
+  '';
 
   postInstall = lib.optionalString stdenv.hostPlatform.isDarwin ''
     makeWrapper $out/Applications/wireguard-gui.app/Contents/MacOS/wireguard-gui $out/bin/wireguard-gui
