@@ -1,3 +1,4 @@
+import type { Browser } from 'webdriverio';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import path, { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -149,6 +150,11 @@ export const config = {
       },
     ],
   ],
+  before: async (_capabilities: unknown, _specs: string[], browser: Browser) => {
+    // Select our single app window explicitly. This prevents the service from
+    // probing Tauri's global API for focus before every element command.
+    await browser.switchToWindow(await browser.getWindowHandle());
+  },
   framework: 'mocha',
   reporters: [['spec', { stdout: true }]],
   beforeSession: (_config: unknown, caps: Record<string, unknown>) => {

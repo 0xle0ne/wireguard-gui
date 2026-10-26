@@ -42,12 +42,14 @@ export interface SecurityControlsProps {
   encryptionEnabled?: boolean;
   isUnlocked?: boolean;
   onStateChanged: () => void;
+  onResetComplete: () => void;
 }
 
 export function SecurityControls({
   encryptionEnabled,
   isUnlocked,
   onStateChanged,
+  onResetComplete,
 }: SecurityControlsProps) {
   const [enablePin, setEnablePin] = React.useState('');
   const [disablePin, setDisablePin] = React.useState('');
@@ -113,7 +115,7 @@ export function SecurityControls({
         setEnablePin('');
         setDisablePin('');
         toast.success('App data reset complete');
-        onStateChanged();
+        onResetComplete();
       },
       (error) => {
         toast.error('Failed to reset app', {
@@ -121,7 +123,7 @@ export function SecurityControls({
         });
       },
     );
-  }, [onStateChanged]);
+  }, [onResetComplete]);
 
   return (
     <>
