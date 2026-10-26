@@ -24,7 +24,8 @@ in
 rustPlatform.buildRustPackage rec {
   pname = toml.name;
   inherit src;
-  inherit (toml) version;
+  # Tauri config owns the app version; Cargo keeps its 0.0.0 placeholder.
+  version = (builtins.fromJSON (builtins.readFile ../src-tauri/tauri.conf.json)).version;
 
   npmDeps = fetchNpmDeps {
     inherit pname version src;
