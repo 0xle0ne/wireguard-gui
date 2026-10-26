@@ -89,7 +89,7 @@
     "@wdio/mocha-framework": "9.32.0",
     "@wdio/spec-reporter": "9.32.0",
     "@wdio/tauri-service": "1.5.1",
-    "@wdio/types": "9.32.0",
+    "@wdio/types": "10.1.0",
     "autoprefixer": "10.6.1",
     "baseline-browser-mapping": "2.11.31",
     "eslint": "9.39.5",
