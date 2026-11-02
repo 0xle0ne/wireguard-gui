@@ -43,7 +43,7 @@ jobs:
           test "$branch_version" = "$app_version"
       - name: Build application
         run: npm run tauri build -- --bundles deb,appimage
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: bundles-${{ matrix.runner }}
           path: |
