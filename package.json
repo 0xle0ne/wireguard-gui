@@ -44,7 +44,7 @@
     "@radix-ui/react-toggle": "1.2.1",
     "@radix-ui/react-toggle-group": "1.2.1",
     "@radix-ui/react-tooltip": "1.4.1",
-    "@tanstack/react-table": "8.21.3",
+    "@tanstack/react-table": "9.3.1",
     "@tauri-apps/api": "2.12.4",
     "@tauri-apps/plugin-dialog": "2.8.2",
     "axios": "1.20.0",
